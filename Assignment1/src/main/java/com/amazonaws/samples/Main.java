@@ -6,8 +6,10 @@ import java.util.Collection;
 import java.util.Iterator;
 
 import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.ec2.AmazonEC2Client;
+import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
 
@@ -17,7 +19,8 @@ public class Main {
 	public static void main(String[] args) {
 
         AWSCredentials credentials = new BasicAWSCredentials("access-key","secret-access-key");
-        AmazonEC2Client ec2 = new AmazonEC2Client(credentials);
+        AmazonEC2Client ec2 = (AmazonEC2Client) AmazonEC2ClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(credentials)).build();
+        //AmazonEC2Client ec2 = new AmazonEC2Client(credentials); --> Deprecated method
         RunInstancesRequest request = new RunInstancesRequest();
         request.setInstanceType(InstanceType.M1Small.toString());
         request.setMinCount(1);
@@ -39,6 +42,7 @@ public class Main {
         return str;
     }
 
+    
     /* Join lines of Base 64 text and return the stringified text*/
     static String join(Collection<String> s, String delimiter) {
         StringBuilder builder = new StringBuilder();
