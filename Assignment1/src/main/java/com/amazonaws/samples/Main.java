@@ -17,7 +17,7 @@ import com.amazonaws.services.ec2.model.RunInstancesRequest;
 public class Main {
 
 	public static void main(String[] args) {
-
+		System.out.println("Check");
 		
     }
 	
@@ -45,7 +45,7 @@ public class Main {
 	/* Get data script from user */
     private static String getUserDataScript(){
         ArrayList<String> lines = new ArrayList<String>();
-        lines.add("#! /bin/bash");
+        lines.add("#! /bin/bash");				// User data starting with '#!' getting the instance to run as the root user on the first boot
         lines.add("curl http://www.google.com > google.html");
         lines.add("shutdown -h 0");
         String str = new String(Base64.getEncoder().encode(join(lines, "\n").getBytes()));
