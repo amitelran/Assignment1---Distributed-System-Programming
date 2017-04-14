@@ -18,6 +18,15 @@ public class Main {
 
 	public static void main(String[] args) {
 
+		
+    }
+	
+	
+	
+	/* Passing user-data shell-scripts to the remote machine, to be run when the machine starts up.
+	 * The script being passed is encoded to base64 
+	 */
+	public static void runInst(){
         AWSCredentials credentials = new BasicAWSCredentials("access-key","secret-access-key");
         AmazonEC2Client ec2 = (AmazonEC2Client) AmazonEC2ClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(credentials)).build();
         //AmazonEC2Client ec2 = new AmazonEC2Client(credentials); --> Deprecated method
@@ -29,8 +38,9 @@ public class Main {
         request.setKeyName("linux-keypair");
         request.setUserData(getUserDataScript());
         ec2.runInstances(request);    			// Run the instance with the request we constructed
-    }
+	}
 
+	
 	
 	/* Get data script from user */
     private static String getUserDataScript(){
@@ -43,8 +53,9 @@ public class Main {
     }
 
     
+    
     /* Join lines of Base 64 text and return the stringified text*/
-    static String join(Collection<String> s, String delimiter) {
+    public static String join(Collection<String> s, String delimiter) {
         StringBuilder builder = new StringBuilder();
         Iterator<String> iter = s.iterator();
         while (iter.hasNext()) {
