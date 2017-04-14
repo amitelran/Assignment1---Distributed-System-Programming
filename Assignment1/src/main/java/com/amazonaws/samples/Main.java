@@ -35,7 +35,7 @@ public class Main {
         lines.add("#! /bin/bash");
         lines.add("curl http://www.google.com > google.html");
         lines.add("shutdown -h 0");
-        String str = new String(Base64.encodeBase64(join(lines, "\n").getBytes()));
+        String str = new String(Base64.getEncoder().encode(join(lines, "\n").getBytes()));
         return str;
     }
 
