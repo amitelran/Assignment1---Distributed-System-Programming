@@ -1,4 +1,4 @@
-package com.amazonaws.samples;
+package LocalApplication;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -14,7 +14,7 @@ import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
 
 
-public class Main {
+public class LocalApplication {
 
 	public static void main(String[] args) {
 		System.out.println("Check");
