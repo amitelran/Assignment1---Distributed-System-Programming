@@ -1,71 +1,67 @@
 package LocalApplication;
 
 import java.util.ArrayList;
-import java.util.Base64;
-import java.util.Collection;
-import java.util.Iterator;
+import java.util.List;
 
+import com.amazonaws.AmazonServiceException;
 import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.PropertiesCredentials;
+import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
-import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.ec2.model.CreateTagsRequest;
+import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.ec2.model.DescribeInstancesResult;
+import com.amazonaws.services.ec2.model.Filter;
+import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceType;
+import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
-
+import com.amazonaws.services.ec2.model.Tag;
 
 public class LocalApplication {
 
-	public static void main(String[] args) {
-		System.out.println("Check");
-		
-    }
-	
-	
-	
-	/* Passing user-data shell-scripts to the remote machine, to be run when the machine starts up.
-	 * The script being passed is encoded to base64 
-	 */
-	public static void EC2Launch(){
-        AWSCredentials credentials = new BasicAWSCredentials("access-key","secret-access-key");
-        AmazonEC2Client ec2 = (AmazonEC2Client) AmazonEC2ClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(credentials)).build();
-        //AmazonEC2Client ec2 = new AmazonEC2Client(credentials); --> Deprecated method
-        RunInstancesRequest request = new RunInstancesRequest();
-        request.setInstanceType(InstanceType.M1Small.toString());		// Set instance type to m1small in string representation (general purpose instance - resource balanced in terms of CPU, nmemory and network resources)
-        request.setMinCount(1);											// Set minimum number of instances to launch
-        request.setMaxCount(1);											// Set maximum number of instances to launch
-        request.setImageId("ami-51792c38"); 							// Choosing an image which supports user-data scripts 'ami-51792c38' 
-        request.setKeyName("linux-keypair");							// Name of the key pair
-        request.setUserData(getUserDataScript());						// The user data to make available to the instance
-        ec2.runInstances(request);    									// Run the instance with the request we constructed
-	}
+    public static void main(String[] args) throws Exception {
+        AmazonEC2 ec2;
+        
+        AWSCredentials credentials = new PropertiesCredentials(EC2Launch.class.getResourceAsStream("AwsCredentials.properties"));
+        ec2 = new AmazonEC2Client(credentials);
+ 
+        try {
+        	DescribeInstancesRequest listingRequest = new DescribeInstancesRequest();
 
-	
-	
-	/* Get data script from user */
-    private static String getUserDataScript(){
-        ArrayList<String> lines = new ArrayList<String>();
-        lines.add("#! /bin/bash");				// User data starting with '#!' getting the instance to run as the root user on the first boot
-        lines.add("curl http://www.google.com > google.html");
-        lines.add("shutdown -h 0");
-        String str = new String(Base64.getEncoder().encode(join(lines, "\n").getBytes()));
-        return str;
-    }
+        	List<String> valuesT1 = new ArrayList<String>();
+        	valuesT1.add("0");
+        	Filter filter1 = new Filter("tag:Manager", valuesT1);
 
-    
-    
-    /* Join lines of Base 64 text and return the stringified text*/
-    public static String join(Collection<String> s, String delimiter) {
-        StringBuilder builder = new StringBuilder();
-        Iterator<String> iter = s.iterator();
-        while (iter.hasNext()) {
-            builder.append(iter.next());
-            if (!iter.hasNext()) {
-                break;
-            }
-            builder.append(delimiter);
+        	DescribeInstancesResult result = ec2.describeInstances(listingRequest.withFilters(filter1));
+        	List<Reservation> reservations = result.getReservations();
+
+        	if(reservations.size() == 0){
+              RunInstancesRequest request = new RunInstancesRequest("ami-51792c38", 1, 1);
+              request.setInstanceType(InstanceType.T1Micro.toString());
+              
+              List<Instance> instances = ec2.runInstances(request).getReservation().getInstances();
+              
+              String instanceId = instances.get(0).getInstanceId();
+              
+              
+              CreateTagsRequest tagRequest = new CreateTagsRequest();
+              tagRequest = tagRequest.withResources(instanceId)
+                               .withTags(new Tag("Manager", "0"));
+              ec2.createTags(tagRequest);
+              
+              System.out.println("Launch instances: " + instances);
+        	}
+        	else
+        		System.out.println("Manager already exists!");
+
+ 
+        } catch (AmazonServiceException ase) {
+            System.out.println("Caught Exception: " + ase.getMessage());
+            System.out.println("Reponse Status Code: " + ase.getStatusCode());
+            System.out.println("Error Code: " + ase.getErrorCode());
+            System.out.println("Request ID: " + ase.getRequestId());
         }
-        return builder.toString();
+ 
     }
-
 }
