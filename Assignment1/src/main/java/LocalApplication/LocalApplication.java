@@ -23,9 +23,11 @@ public class LocalApplication {
     public static void main(String[] args) throws Exception {
         AmazonEC2 ec2;
         
-        AWSCredentials credentials = new PropertiesCredentials(EC2Launch.class.getResourceAsStream("AwsCredentials.properties"));
+        AWSCredentials credentials = new PropertiesCredentials(LocalApplication.class.getResourceAsStream("AwsCredentials.properties"));
         ec2 = new AmazonEC2Client(credentials);
- 
+
+		System.out.println("Checking if Manager instance exists...");
+		
         try {
         	DescribeInstancesRequest listingRequest = new DescribeInstancesRequest();
 
@@ -37,23 +39,24 @@ public class LocalApplication {
         	List<Reservation> reservations = result.getReservations();
 
         	if(reservations.size() == 0){
-              RunInstancesRequest request = new RunInstancesRequest("ami-51792c38", 1, 1);
-              request.setInstanceType(InstanceType.T1Micro.toString());
-              
-              List<Instance> instances = ec2.runInstances(request).getReservation().getInstances();
-              
-              String instanceId = instances.get(0).getInstanceId();
-              
-              
-              CreateTagsRequest tagRequest = new CreateTagsRequest();
-              tagRequest = tagRequest.withResources(instanceId)
-                               .withTags(new Tag("Manager", "0"));
-              ec2.createTags(tagRequest);
-              
-              System.out.println("Launch instances: " + instances);
+				System.out.println("Manager instance not found\nCreating Manager...");
+				
+				RunInstancesRequest request = new RunInstancesRequest("ami-51792c38", 1, 1);
+				request.setInstanceType(InstanceType.T1Micro.toString());
+				
+				List<Instance> instances = ec2.runInstances(request).getReservation().getInstances();
+				 
+				String instanceId = instances.get(0).getInstanceId();
+				
+				CreateTagsRequest tagRequest = new CreateTagsRequest();
+				tagRequest = tagRequest.withResources(instanceId)
+				                 .withTags(new Tag("Manager", "0"));
+				ec2.createTags(tagRequest);
+				  
+				System.out.println("Launch instances: " + instances);
         	}
         	else
-        		System.out.println("Manager already exists!");
+        		System.out.println("Manager instance found: " + reservations);
 
  
         } catch (AmazonServiceException ase) {
