@@ -1,12 +1,14 @@
 package SQS;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.Map.Entry;
  
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.auth.PropertiesCredentials;
+import com.amazonaws.services.sqs.model.MessageAttributeValue;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.CreateQueueRequest;
@@ -20,58 +22,45 @@ public class SimpleQueueService {
 
 	public static void main(String[] args) throws Exception {
  
-        AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));
+        @SuppressWarnings("deprecation")
+		AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));
         try {
         	// Create a Local Application <--> Manager queue
         	System.out.println("Creating a Local Application <--> Manager SQS queue");
-            CreateQueueRequest createLocalAppQueueRequest = new CreateQueueRequest("localAppQueue"+ UUID.randomUUID());
-            String localAppQueueUrl = sqs.createQueue(createLocalAppQueueRequest).getQueueUrl();
+            //CreateQueueRequest createLocalAppQueueRequest = new CreateQueueRequest("localAppQueue"+ UUID.randomUUID());
+            //String localAppQueueUrl = sqs.createQueue(createLocalAppQueueRequest).getQueueUrl();
+            String localAppQueueUrl = queueCreate(sqs, "localAppQueue");
  
             // Create a Manager <--> Workers queue
             System.out.println("Creating a Manager <--> Workers SQS queue");
-            CreateQueueRequest createInstancesQueueRequest = new CreateQueueRequest("instancesQueue"+ UUID.randomUUID());
-            String instancesQueueUrl = sqs.createQueue(createInstancesQueueRequest).getQueueUrl();
+            //CreateQueueRequest createInstancesQueueRequest = new CreateQueueRequest("instancesQueue"+ UUID.randomUUID());
+            //String instancesQueueUrl = sqs.createQueue(createInstancesQueueRequest).getQueueUrl();
+            String instancesQueueUrl = queueCreate(sqs, "instancesQueue");
  
+            String queueURL = queueCreate(sqs, "myQueue");
             // List all queues in the account
-            for (String queueUrl : sqs.listQueues().getQueueUrls()) {
-                System.out.println("QueueUrl: " + queueUrl);
-            }
-            System.out.println();
- 
-            // Send a message
-            System.out.println("Sending a message to MyQueue.\n");
-            sqs.sendMessage(new SendMessageRequest(myQueueUrl, "This is my message text."));
- 
-            // Receive messages
-            System.out.println("Receiving messages from MyQueue.\n");
-            ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(myQueueUrl);
-            List<Message> messages = sqs.receiveMessage(receiveMessageRequest).getMessages();
-            for (Message message : messages) {
-                System.out.println("  Message");
-                System.out.println("    MessageId:     " + message.getMessageId());
-                System.out.println("    ReceiptHandle: " + message.getReceiptHandle());
-                System.out.println("    MD5OfBody:     " + message.getMD5OfBody());
-                System.out.println("    Body:          " + message.getBody());
-                for (Entry<String, String> entry : message.getAttributes().entrySet()) {
-                    System.out.println("  Attribute");
-                    System.out.println("    Name:  " + entry.getKey());
-                    System.out.println("    Value: " + entry.getValue());
-                }
-            }
-            System.out.println();
- 
-            // Delete a message
-            System.out.println("Deleting a message.\n");
-            String messageRecieptHandle = messages.get(0).getReceiptHandle();
-            sqs.deleteMessage(new DeleteMessageRequest(myQueueUrl, messageRecieptHandle));
- 
+            ListAllQueues(sqs);
+            
+            // Send message test
+            donePDFTaskMessage donePDFTask = new donePDFTaskMessage("outputFilelocation", "operation", "URL");
+            sendQueueMessage(sqs, instancesQueueUrl, MessageType.donePDFTask, donePDFTask);
+            
+            newPDFTaskMessage newpdfTSK = new newPDFTaskMessage("test2", "ToHTML");
+            sendQueueMessage(sqs, instancesQueueUrl, MessageType.newPDFTask, newpdfTSK);
+            
+            // Receive message test
+            List<Message> msgList = receiveMessages(sqs, localAppQueueUrl);
+            msgList = receiveMessages(sqs, instancesQueueUrl);
+            msgList = receiveMessages(sqs, instancesQueueUrl);
+            
             // Deleting queues
-            System.out.println("Deleting the Manager <--> Workers queue");
-            sqs.deleteQueue(new DeleteQueueRequest(instancesQueueUrl));
-            System.out.println("Deleting the Local Application <--> Manager queue");
-            sqs.deleteQueue(new DeleteQueueRequest(localAppQueueUrl));
+            //deleteQueues(sqs);
+            deleteSingleQueue(sqs, localAppQueueUrl);
+            deleteSingleQueue(sqs, instancesQueueUrl);
+            deleteSingleQueue(sqs, queueURL);
             
         } catch (AmazonServiceException ase) {
+        	
             System.out.println("Caught an AmazonServiceException, request made it to Amazon SQS, but was rejected with an error.");
             System.out.println("Error Message:    " + ase.getMessage());
             System.out.println("HTTP Status Code: " + ase.getStatusCode());
@@ -80,9 +69,134 @@ public class SimpleQueueService {
             System.out.println("Request ID:       " + ase.getRequestId());
             
         } catch (AmazonClientException ace) {
+        	
             System.out.println("Caught an AmazonClientException, client encountered an internal problem while trying to communicate with SQS.");
             System.out.println("Error Message: " + ace.getMessage());
+
         }
     }
-
+	
+	
+	/*************** Create new queue, returns queue URL ***************/
+	
+	
+	public static String queueCreate(AmazonSQS sqs, String queueName){
+		//System.out.println("Creating a Local Application <--> Manager SQS queue");
+        CreateQueueRequest createQueueRequest = new CreateQueueRequest(queueName + "_" + UUID.randomUUID());
+        String queueURL = sqs.createQueue(createQueueRequest).getQueueUrl();
+        return queueURL;
+	}
+	
+	
+	
+	/*************** Delete a single queue ***************/
+	
+	
+	public static void deleteSingleQueue(AmazonSQS sqs, String queueURL){
+		System.out.println("Deleting queue: " + queueURL);
+        sqs.deleteQueue(new DeleteQueueRequest(queueURL));
+	}
+	
+	
+	
+	
+	/*************** Delete all existing queues under current SQS ***************/
+	
+	
+	public static void deleteQueues(AmazonSQS sqs){
+		for (String queueUrl : sqs.listQueues().getQueueUrls()) {
+            System.out.println("Deleting queue: " + queueUrl);
+            sqs.deleteQueue(new DeleteQueueRequest(queueUrl));
+        }
+	}
+	
+	
+	
+	/*************** List existing queues in given SQS ***************/
+	
+	
+	public static void ListAllQueues(AmazonSQS sqs){
+		for (String queueUrl : sqs.listQueues().getQueueUrls()) {
+            System.out.println("QueueUrl: " + queueUrl);
+        }
+        System.out.println();
+	}
+	
+	
+	/*************** Send message from queue ***************/
+	
+	
+	public static void sendQueueMessage(AmazonSQS sqs, String QueueURL, MessageType messageType, MessageInterface msg){
+    	switch (messageType){
+    		case newTask:
+    			System.out.println("Sending 'new task' message to LocalApplication <--> Manager queue");
+    			sqs.sendMessage(new SendMessageRequest(QueueURL, ((newTaskMessage) msg).getInputFileLocation()));
+    			break;
+    			
+    		case doneTask:
+    			System.out.println("Sending 'done task' message to LocalApplication <--> Manager queue");
+    			sqs.sendMessage(new SendMessageRequest(QueueURL, ((doneTaskMessage) msg).getSummaryFileLocation()));
+    			break;
+    			
+    		case newPDFTask:
+    			System.out.println("Sending 'new PDF task' message to Manager <--> Workers queue");
+    			SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(QueueURL).withMessageBody(((newPDFTaskMessage) msg).getpdfURL());
+    			send_msg_request.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").
+															withStringValue(((newPDFTaskMessage) msg).getOperation()));
+    			sqs.sendMessage(send_msg_request);
+    			break;
+    			
+    		case donePDFTask:
+    			System.out.println("Sending 'done PDF task' message to Manager <--> Workers queue");
+    			SendMessageRequest send_msg_req = new SendMessageRequest().withQueueUrl(QueueURL).withMessageBody(((donePDFTaskMessage) msg).getpdfURL());
+    			send_msg_req.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").
+															withStringValue(((donePDFTaskMessage) msg).getOperationToPeform()));
+    			send_msg_req.addMessageAttributesEntry("Output_File_Location", new MessageAttributeValue().withDataType("String").
+															withStringValue(((donePDFTaskMessage) msg).getOutputLocation()));
+    			sqs.sendMessage(send_msg_req);
+    			break;
+    			
+    		default:
+    			break;
+    	}
+	}
+	
+	
+	
+	/*************** Receive messages from queue ***************/
+	
+	
+	public static List<Message> receiveMessages(AmazonSQS sqs, String QueueURL){
+        ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(QueueURL);
+        //ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(QueueURL).withMaxNumberOfMessages(1);
+        List<Message> messages = sqs.receiveMessage(receiveMessageRequest.withMessageAttributeNames("All")).getMessages();
+        for (Message message : messages) {
+        	Map<String, MessageAttributeValue> msgAttributes = message.getMessageAttributes();
+        	System.out.println("" + msgAttributes.size() + " attributes.");
+            System.out.println("  ** Message **");
+            System.out.println("    MessageId:     " + message.getMessageId());
+            System.out.println("    ReceiptHandle: " + message.getReceiptHandle());
+            System.out.println("    MD5OfBody:     " + message.getMD5OfBody());
+            System.out.println("    Body:          " + message.getBody());
+            for (Entry<String, String> entry : message.getAttributes().entrySet()) {
+                System.out.println("  Attribute");
+                System.out.println("    Name:  " + entry.getKey());
+                System.out.println("    Value: " + entry.getValue());
+            }
+        }
+        System.out.println();
+        //return msgAttributes;
+        return messages;
+	}
+	
+	
+	
+	/*************** Delete messages from queue ***************/
+	
+	
+	public static void deleteMessages(AmazonSQS sqs, String QueueURL, List<Message> messages){
+    	String messageReceiptHandle = messages.get(0).getReceiptHandle();
+        sqs.deleteMessage(new DeleteMessageRequest(QueueURL, messageReceiptHandle));
+	}
+	
 }
