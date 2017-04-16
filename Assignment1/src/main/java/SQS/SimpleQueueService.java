@@ -1,5 +1,6 @@
 package SQS;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -76,6 +77,24 @@ public class SimpleQueueService {
         }
     }
 	
+	/*************** Create new Simple Queue Service (SQS) ***************
+	 * @throws IOException ***************/
+	
+	
+	public static AmazonSQS createSQS() throws IOException{
+		AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));
+		return sqs;
+	}
+	
+	/*
+	/*************** AmazonSQS getter ***************
+	 * @throws IOException ***************
+	
+	
+	public static AmazonSQS getSQS() throws IOException{
+		AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));
+		return sqs;
+	}*/
 	
 	/*************** Create new queue, returns queue URL ***************/
 	
