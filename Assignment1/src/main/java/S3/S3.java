@@ -27,35 +27,14 @@ import com.amazonaws.services.s3.model.S3ObjectSummary;
 
 public class S3 {
 	
-	 
 	    public static void main(String[] args) throws IOException {
-	        /*
-	         * Important: Be sure to fill in your AWS access credentials in the
-	         *            AwsCredentials.properties file before you try to run this
-	         *            sample.
-	         * http://aws.amazon.com/security-credentials
-	         */
-	        AWSCredentials credentials = new PropertiesCredentials(S3.class.getResourceAsStream("AwsCredentials.properties"));
-	        //AmazonS3 s3 = new AmazonS3Client(credentials);
-	        AmazonS3 s3 = AwsClientBuilder.withCredentials(AWSCredentialsProvider);
+	    	AWSCredentials credentials = new PropertiesCredentials(S3.class.getResourceAsStream("AwsCredentials.properties"));
+	        AmazonS3 s3 = new AmazonS3Client(credentials);
 	        String directoryName = args[0];
-	        
 	        String bucketName = credentials.getAWSAccessKeyId() + "_" + directoryName.replace('\\', '_').replace('/','_').replace(':', '_');
-	        String key=null;
-	 
-	        System.out.println("===========================================");
-	        System.out.println("Getting Started with Amazon S3");
-	        System.out.println("===========================================\n");
+	        String key = null;
 	 
 	        try {
-	            /*
-	             * Create a new S3 bucket - Amazon S3 bucket names are globally unique,
-	             * so once a bucket name has been taken by any user, you can't create
-	             * another bucket with that same name.
-	             *
-	             * You can optionally specify a location for your bucket if you want to
-	             * keep your data closer to your applications or users.
-	             */
 	            System.out.println("Creating bucket " + bucketName + "\n");
 	            s3.createBucket(bucketName);
 	 
@@ -68,21 +47,9 @@ public class S3 {
 	            }
 	            System.out.println();
 	 
-	            /*
-	             * Upload an object to your bucket - You can easily upload a file to
-	             * S3, or upload directly an InputStream if you know the length of
-	             * the data in the stream. You can also specify your own metadata
-	             * when uploading to S3, which allows you set a variety of options
-	             * like content-type and content-encoding, plus additional metadata
-	             * specific to your applications.
-	             */
-	            System.out.println("Uploading a new object to S3 from a file\n");
-	            File dir = new File(directoryName);
-	            for (File file : dir.listFiles()) {
-	                key = file.getName().replace('\\', '_').replace('/','_').replace(':', '_');
-	                PutObjectRequest req = new PutObjectRequest(bucketName, key, file);
-	                s3.putObject(req);
-	            }
+	            
+	             // Upload an object to your bucket
+	            
 	 
 	            /*
 	             * Download an object - When you download an object, you get all of
@@ -96,10 +63,7 @@ public class S3 {
 	             * conditional downloading of objects based on modification times,
 	             * ETags, and selectively downloading a range of an object.
 	             */
-	            System.out.println("Downloading an object");
-	            S3Object object = s3.getObject(new GetObjectRequest(bucketName, key));
-	            System.out.println("Content-Type: "  + object.getObjectMetadata().getContentType());
-	            displayTextInputStream(object.getObjectContent());
+	            
 	 
 	            /*
 	             * List objects in your bucket by prefix - There are many options for
@@ -148,6 +112,37 @@ public class S3 {
 	            System.out.println("Error Message: " + ace.getMessage());
 	        }
 	    }
+	    
+	    
+	    
+	    /*********** Upload an object to your bucket ***********/
+	    
+	    
+	    public static void S3uploadObject(AmazonS3 s3, String directoryName, String bucketName, String key){
+            System.out.println("Uploading a new object to S3 from a file\n");
+            File dir = new File(directoryName);
+            for (File file : dir.listFiles()) {
+                key = file.getName().replace('\\', '_').replace('/','_').replace(':', '_');
+                PutObjectRequest req = new PutObjectRequest(bucketName, key, file);
+                s3.putObject(req);
+            }
+	    }
+	    
+	    
+	    
+	    /*********** Download an object from bucket 
+	     * @throws IOException ***********/
+	    
+	    
+	    public static S3Object S3downloadObject(AmazonS3 s3, String bucketName, String key) throws IOException{
+	    	System.out.println("Downloading an object from S3 storage");
+	        S3Object object = s3.getObject(new GetObjectRequest(bucketName, key));		// Provide object information with GetObjectRequest
+	        System.out.println("Content-Type: "  + object.getObjectMetadata().getContentType());
+	        displayTextInputStream(object.getObjectContent());
+	        return object;
+	    }
+	    
+	    
 	 
 	    /**
 	     * Displays the contents of the specified input stream as text.
