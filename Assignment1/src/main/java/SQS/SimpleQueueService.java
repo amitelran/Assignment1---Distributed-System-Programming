@@ -149,30 +149,38 @@ public class SimpleQueueService {
     	switch (messageType){
     		case newTask:
     			System.out.println("Sending 'new task' message to LocalApplication <--> Manager queue");
-    			sqs.sendMessage(new SendMessageRequest(QueueURL, ((newTaskMessage) msg).getInputFileLocation()));
+    			SendMessageRequest send_msg_request1 = new SendMessageRequest().withQueueUrl(QueueURL).withMessageBody("newTask");
+    			send_msg_request1.addMessageAttributesEntry("inputFileLocation", new MessageAttributeValue().withDataType("String").withStringValue(((newTaskMessage) msg).getInputFileLocation()));
+    			sqs.sendMessage(send_msg_request1);
     			break;
     			
     		case doneTask:
     			System.out.println("Sending 'done task' message to LocalApplication <--> Manager queue");
-    			sqs.sendMessage(new SendMessageRequest(QueueURL, ((doneTaskMessage) msg).getSummaryFileLocation()));
+    			SendMessageRequest send_msg_request2 = new SendMessageRequest().withQueueUrl(QueueURL).withMessageBody("doneTask");
+    			send_msg_request2.addMessageAttributesEntry("outputFileLocation", new MessageAttributeValue().withDataType("String").withStringValue(((doneTaskMessage) msg).getSummaryFileLocation()));
+    			sqs.sendMessage(send_msg_request2);
     			break;
     			
     		case newPDFTask:
     			System.out.println("Sending 'new PDF task' message to Manager <--> Workers queue");
-    			SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(QueueURL).withMessageBody(((newPDFTaskMessage) msg).getpdfURL());
-    			send_msg_request.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").
+    			SendMessageRequest send_msg_request3 = new SendMessageRequest().withQueueUrl(QueueURL).withMessageBody("newPDFTask");
+    			send_msg_request3.addMessageAttributesEntry("PDF_URL", new MessageAttributeValue().withDataType("String").
+						withStringValue(((newPDFTaskMessage) msg).getpdfURL()));
+    			send_msg_request3.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").
 															withStringValue(((newPDFTaskMessage) msg).getOperation()));
-    			sqs.sendMessage(send_msg_request);
+    			sqs.sendMessage(send_msg_request3);
     			break;
     			
     		case donePDFTask:
     			System.out.println("Sending 'done PDF task' message to Manager <--> Workers queue");
-    			SendMessageRequest send_msg_req = new SendMessageRequest().withQueueUrl(QueueURL).withMessageBody(((donePDFTaskMessage) msg).getpdfURL());
-    			send_msg_req.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").
+    			SendMessageRequest send_msg_request4 = new SendMessageRequest().withQueueUrl(QueueURL).withMessageBody("donePDFTask");
+    			send_msg_request4.addMessageAttributesEntry("PDF_URL", new MessageAttributeValue().withDataType("String").
+															withStringValue(((donePDFTaskMessage) msg).getpdfURL()));
+    			send_msg_request4.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").
 															withStringValue(((donePDFTaskMessage) msg).getOperationToPeform()));
-    			send_msg_req.addMessageAttributesEntry("Output_File_Location", new MessageAttributeValue().withDataType("String").
+    			send_msg_request4.addMessageAttributesEntry("Output_File_Location", new MessageAttributeValue().withDataType("String").
 															withStringValue(((donePDFTaskMessage) msg).getOutputLocation()));
-    			sqs.sendMessage(send_msg_req);
+    			sqs.sendMessage(send_msg_request4);
     			break;
     			
     		default:
