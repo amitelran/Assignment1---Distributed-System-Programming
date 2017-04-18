@@ -110,21 +110,27 @@ public class LocalApplication {
         }
         
         
-        /*	************** Create Local Application <--> Manager queue **************	*/
-        
+        /*	************** Create Local Application <--> Manager 'newTask|Termination' and 'doneTask' queues **************	*/
+        /* 'newTask|Termination' queue - Messages from Local Application to Manager
+         * 'doneTask' queue - Messages from Manager  to Local Application
+         */
         
         AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));
-        System.out.println("Creating a Local Application <--> Manager SQS queue");
-        CreateQueueRequest createQueueRequest = new CreateQueueRequest("LocalAppQueue_" + UUID.randomUUID());
-        String localAppQueueUrl = sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
+        System.out.println("Creating a Local Application <--> Manager 'newTask|Termination' SQS queue");
+        CreateQueueRequest createQueueRequest = new CreateQueueRequest("newTaskQueue_" + UUID.randomUUID());
+        String newTaskQueueURL = sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
+        
+        System.out.println("Creating a Local Application <--> Manager 'doneTask' SQS queue");
+        createQueueRequest = new CreateQueueRequest("doneTaskQueue_" + UUID.randomUUID());
+        String doneTaskQueueURL = sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
         
         
         
         /*	************** Sending a message to SQS queue, stating the location of the file on S3 **************	*/
         
         
-        System.out.println("Sending 'new task' message to LocalApplication <--> Manager queue");
-		SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(localAppQueueUrl).withMessageBody("newTask");
+        System.out.println("Sending 'new task' message to 'newTask' queue");
+		SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(newTaskQueueURL).withMessageBody("newTask");
 		send_msg_request.addMessageAttributesEntry("inputFileLocation", new MessageAttributeValue().withDataType("String").withStringValue(bucketName));
 		sqs.sendMessage(send_msg_request);
         

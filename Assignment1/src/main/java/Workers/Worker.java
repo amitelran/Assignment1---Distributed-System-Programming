@@ -28,25 +28,37 @@ public class Worker {
 
 		AWSCredentials credentials = new PropertiesCredentials(Worker.class.getResourceAsStream("AwsCredentials.properties"));
         AmazonEC2 ec2 = new AmazonEC2Client(credentials);
+        String newPDFTaskQueueURL = null;					// 'newPDFTask|WorkerTermination' Manager <--> Workers queue
+        String donePDFTaskQueueURL = null;					// 'donePDFTask' Manager <--> Workers queue
         PDFImageWriter pdf_Img_Writer = new PDFImageWriter();
         PDFText2HTML pdf_to_HTML_converter = new PDFText2HTML("UTF-8");
         PDFTextStripper pdf_to_text_converter = new PDFTextStripper("UTF-8");
         
-        String Manager_Workers_QueueURL = null;
+        
+        
+        /*	************** Get 'newPDFTask|WorkerTermination' and 'donePDFTask' Manager <--> Workers SQS queues ************** */	
+        
+        
         AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));	// Declare SQS client
         for (String queueUrl : sqs.listQueues().getQueueUrls()) {
         	String queueName = queueUrl.split("\\_")[0];								// Get queue name from beginning of queue URL up to '_' delimeter
-            if (queueName == "WorkersQueue"){
-            	Manager_Workers_QueueURL = sqs.getQueueUrl(queueName).getQueueUrl();	// Get queue URL by queue name
+            if (queueName == "newPDFTaskQueue"){
+            	newPDFTaskQueueURL = sqs.getQueueUrl(queueName).getQueueUrl();			// Get queue URL by queue name
+            }
+            else if (queueName == "donePDFTaskQueue"){
+            	donePDFTaskQueueURL = sqs.getQueueUrl(queueName).getQueueUrl();			// Get queue URL by queue name
             }
         	System.out.println("QueueUrl: " + queueUrl);
         }
         
-        /*	************** Loop until termination message from manager **************	*/
+        
+        
+        /*	************** Loop until termination message from Manager **************	*/
+        
         
         while(true){
-        	System.out.println("Receiving messages from " + Manager_Workers_QueueURL + " SQS queue\n");
-            ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(Manager_Workers_QueueURL);
+        	System.out.println("Receiving messages from " + newPDFTaskQueueURL + " SQS queue\n");
+            ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(newPDFTaskQueueURL);
             List<Message> messages = sqs.receiveMessage(receiveMessageRequest).getMessages();
             for (Message message : messages) {
                 System.out.println("  *** Message ***");
