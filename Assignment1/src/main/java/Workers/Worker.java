@@ -73,12 +73,9 @@ public class Worker {
                 }
                 System.out.println();
                 if (message.getBody() == "newPDFTask"){				// Received a "newTask" message from local application
-                	Map<String, MessageAttributeValue> msgAttributes = message.getMessageAttributes();
+                	
                 	
                 	continue;
-                }
-                if (message.getBody() == "Terminate"){				// Received a termination message from local application
-                	break;
                 }
             }
         }
