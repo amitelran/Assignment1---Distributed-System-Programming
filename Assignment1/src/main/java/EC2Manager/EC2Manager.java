@@ -36,11 +36,13 @@ import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.CreateQueueRequest;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
+import com.amazonaws.services.sqs.model.DeleteQueueRequest;
 import com.amazonaws.services.sqs.model.GetQueueUrlResult;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.MessageAttributeValue;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
+import com.sun.org.apache.xml.internal.utils.URI;
 
 import LocalApplication.LocalApplication;
 import S3.S3;
@@ -73,32 +75,37 @@ public class EC2Manager {
         
         AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));	// Declare SQS client
         for (String queueUrl : sqs.listQueues().getQueueUrls()) {
-        	String queueName = queueUrl.split("\\_")[0];					// Get queue name from beginning of queue URL up to '_' delimeter
-            if (queueName == "newTaskQueue"){
-            	newTaskQueueURL = sqs.getQueueUrl(queueName).getQueueUrl();	// Get queue URL by queue name
+        	URI uri = new URI(queueUrl);
+        	String path = uri.getPath();
+        	String queueName = path.substring(path.lastIndexOf('/') + 1); 
+        	System.out.println("queuename: " + queueName);
+            if (queueName.equals("newTaskQueue")){
+            	newTaskQueueURL = queueUrl;
             }
-            else if (queueName == "doneTaskQueue"){
-            	doneTaskQueueURL = sqs.getQueueUrl(queueName).getQueueUrl();	// Get queue URL by queue name
+            else if (queueName.equals("doneTaskQueue")){
+            	doneTaskQueueURL = queueUrl;
             }
         	System.out.println("QueueUrl: " + queueUrl);
         }
         
-        
+   
         
         /*	************** Set 'newPDFTask|WorkerTermination' and 'donePDFTask' Manager <--> Workers SQS queues ************** */	
         
         
         System.out.println("Creating a Manager <--> Workers 'newPDFTask|WorkerTermination' SQS queue");
-        CreateQueueRequest createQueueRequest = new CreateQueueRequest("newPDFTaskQueue_" + UUID.randomUUID());
+       // CreateQueueRequest createQueueRequest = new CreateQueueRequest("newPDFTaskQueue" + UUID.randomUUID());
+        CreateQueueRequest createQueueRequest = new CreateQueueRequest("newPDFTaskQueue");
         String newPDFTaskQueueURL = sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
         
         System.out.println("Creating a Manager <--> Workers 'donePDFTask' SQS queue");
-        createQueueRequest = new CreateQueueRequest("donePDFTaskQueue_" + UUID.randomUUID());
+        createQueueRequest = new CreateQueueRequest("donePDFTaskQueue");
         String donePDFTaskQueueURL = sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
         
         
         /*	************** Loop until termination message from local application **************	*/
         
+       
         
         while(true){
         	
@@ -109,7 +116,7 @@ public class EC2Manager {
         	
         	System.out.println("\nReceiving messages from " + newTaskQueueURL + " SQS queue\n");
             ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(newTaskQueueURL);
-            List<Message> messages = sqs.receiveMessage(receiveMessageRequest).getMessages();
+            List<Message> messages = sqs.receiveMessage(receiveMessageRequest.withMessageAttributeNames("All")).getMessages();
             for (Message message : messages) {
             	printMessage(message);
                 
@@ -119,12 +126,12 @@ public class EC2Manager {
                  *  - Process the input file lines and send each line as a 'newPDFTask' message to Workers queue
               	*/
                 
-                if ((message.getBody() == "newTask") && (!terminateSignal)){				// Received a "newTask" message from local application (while not signaled to terminate)
+                if ((message.getBody().equals("newTask")) && (!terminateSignal)){				// Received a "newTask" message from local application (while not signaled to terminate)
                 	for (Entry<String, String> entry : message.getAttributes().entrySet()) {
-                		if (entry.getKey() == "inputFileBucket"){		// Get the input file bucket location
+                		if (entry.getKey().equals("inputFileBucket")){		// Get the input file bucket location
                 			inputFileBucket = entry.getValue();
                 		}
-                		if (entry.getKey() == "inputFileKey"){			// Get the input file key
+                		if (entry.getKey().equals("inputFileKey")){			// Get the input file key
                 			inputFileKey = entry.getValue();
                 		}
                     }
@@ -154,9 +161,14 @@ public class EC2Manager {
                  */
                 
                 
-                if (message.getBody() == "Terminate"){				// Received a termination message from local application
+                if (message.getBody().equals("Terminate")){				// Received a termination message from local application
                 	if (numOfMessages == 0){
                 		terminateSignal = true;						// Indicate termination after all Workers completed their tasks
+                		// Delete Manager <--> Workers queues
+                		System.out.println("Deleting queue: " + newPDFTaskQueueURL);
+                        sqs.deleteQueue(new DeleteQueueRequest(newPDFTaskQueueURL));
+                        System.out.println("Deleting queue: " + donePDFTaskQueueURL);
+                        sqs.deleteQueue(new DeleteQueueRequest(donePDFTaskQueueURL));
                 	}
                 	
                 	break;
@@ -179,12 +191,12 @@ public class EC2Manager {
                  *  - Sends a message to the user queue with the location of the file
               	*/
             	
-            	if (message.getBody() == "donePDFTask"){
+            	if (message.getBody().equals("donePDFTask")){
             		for (Entry<String, String> entry : message.getAttributes().entrySet()) {
-            			if (entry.getKey() == "inputFileBucket"){		// Get the input file bucket location
+            			if (entry.getKey().equals("inputFileBucket")){		// Get the input file bucket location
                 			inputFileBucket = entry.getValue();
                 		}
-            			if (entry.getKey() == "inputFileKey"){			// Get the input file key
+            			if (entry.getKey().equals("inputFileKey")){			// Get the input file key
                 			inputFileKey = entry.getValue();
                 		}
                     }

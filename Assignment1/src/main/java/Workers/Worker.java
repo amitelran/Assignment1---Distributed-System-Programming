@@ -18,6 +18,7 @@ import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.MessageAttributeValue;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
+import com.sun.org.apache.xml.internal.utils.URI;
 
 import SQS.SimpleQueueService;
 
@@ -41,12 +42,15 @@ public class Worker {
         
         AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));	// Declare SQS client
         for (String queueUrl : sqs.listQueues().getQueueUrls()) {
-        	String queueName = queueUrl.split("\\_")[0];								// Get queue name from beginning of queue URL up to '_' delimeter
-            if (queueName == "newPDFTaskQueue"){
-            	newPDFTaskQueueURL = sqs.getQueueUrl(queueName).getQueueUrl();			// Get queue URL by queue name
+        	URI uri = new URI(queueUrl);
+        	String path = uri.getPath();
+        	String queueName = path.substring(path.lastIndexOf('/') + 1); 
+        	System.out.println("queuename: " + queueName);
+            if (queueName.equals("newPDFTaskQueue")){
+            	newPDFTaskQueueURL = queueUrl;			
             }
-            else if (queueName == "donePDFTaskQueue"){
-            	donePDFTaskQueueURL = sqs.getQueueUrl(queueName).getQueueUrl();			// Get queue URL by queue name
+            else if (queueName.equals("donePDFTaskQueue")){
+            	donePDFTaskQueueURL = queueUrl;			
             }
         	System.out.println("QueueUrl: " + queueUrl);
         }
