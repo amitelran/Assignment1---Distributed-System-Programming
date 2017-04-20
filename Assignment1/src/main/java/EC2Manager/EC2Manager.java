@@ -166,8 +166,8 @@ public class EC2Manager {
             
             /*	************** Go through Manager|Workers queue messages ************** */
             
-            System.out.println("\nReceiving messages from " + doneTaskQueueURL + " SQS queue\n");
-            ReceiveMessageRequest receiveMessageRequest_fromWorkers = new ReceiveMessageRequest(doneTaskQueueURL);
+            System.out.println("\nReceiving messages from " + donePDFTaskQueueURL + " SQS queue\n");
+            ReceiveMessageRequest receiveMessageRequest_fromWorkers = new ReceiveMessageRequest(donePDFTaskQueueURL );
             List<Message> workers_messages = sqs.receiveMessage(receiveMessageRequest_fromWorkers).getMessages();
             for (Message message : workers_messages) {
             	printMessage(message);
