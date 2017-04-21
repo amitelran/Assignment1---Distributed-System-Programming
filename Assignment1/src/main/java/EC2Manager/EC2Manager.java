@@ -1,7 +1,9 @@
 package EC2Manager;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -56,24 +58,33 @@ public class EC2Manager {
         AWSCredentials credentials = new PropertiesCredentials(EC2Manager.class.getResourceAsStream("AwsCredentials.properties"));
         AmazonEC2 ec2 = new AmazonEC2Client(credentials);	// EC2 client
         AmazonS3 s3 = new AmazonS3Client(credentials);		// S3 Storage client
+        AmazonSQS sqs = new AmazonSQSClient(credentials);	// SQS client
         boolean terminateSignal = false;					// Termination signal indicator
+        boolean newPDFTaskQueueExists = false;				// Boolean flag to indicate if need to create a new 'newPDFTask' queue
+        boolean donePDFTaskQueueExists = false;				// Boolean flag to indicate if need to create a new 'donePDFTask' queue
         int numOfWorkers = 0;
         int numOfPDFperWorker = 0;					// An integer stating how many PDF files per worker, as determined by user
         int numOfMessages = 0;						// SQS message counter
+        String newPDFTaskQueueURL = null;			// 'newPDFTask|Termination' Manager <--> Workers queue
+        String donePDFTaskQueueURL = null;			// 'donePDFTask' Manager <--> Workers queue
         String newTaskQueueURL = null;				// 'newTask|Termination' Local Application <--> Manager queue
         String doneTaskQueueURL = null;				// 'doneTask' Local Application <--> Manager queue
         String inputFileBucket = null;				// S3 bucket of the input file with a list of PDF URLs and operations to perform	
         String inputFileKey = null;					// Key of the input file in the S3 Storage
+        String newFileURL = null;					// URL of a new image file as given by Worker
+        String operation = null;					// The operation performed by Worker for a given PDF URL
+        String outputBucketName = "outputmanagerbucketamityoav";		// Manager's output files bucket name 
+        String messageReceiptHandle = null;			// Message receipt handle, required when deleting queue messages
         //List<inputFile> inputFilesList = new ArrayList<inputFile>();		// Initialize empty list of input files
         Map<String, inputFile> inputFilesMap = new HashMap<String, inputFile>();
-        Map<String, File> outputFilesMap = new HashMap<String, File>();
+        Map<String, List<String>> outputFilesMap = new HashMap<String, List<String>>();		// Map from corresponding input file, to List of finished tasks (which we will write in the end to a summary output file)
        
 		
         
         /*	************** Get 'newTask|Termination' and 'doneTask' Local Application <--> Manager SQS queues ************** */	
         
-        
-        AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));	// Declare SQS client
+
+        //AmazonSQS sqs = new AmazonSQSClient(new PropertiesCredentials(SimpleQueueService.class.getResourceAsStream("AwsCredentials.properties")));	// Declare SQS client
         for (String queueUrl : sqs.listQueues().getQueueUrls()) {
         	URI uri = new URI(queueUrl);
         	String path = uri.getPath();
@@ -85,38 +96,65 @@ public class EC2Manager {
             else if (queueName.equals("doneTaskQueue")){
             	doneTaskQueueURL = queueUrl;
             }
+            else if(queueName.equals("newPDFTaskQueue")){
+            	newPDFTaskQueueExists = true;
+            	newPDFTaskQueueURL = queueUrl;
+            }
+            else if(queueName.equals("donePDFTaskQueue")){
+            	donePDFTaskQueueExists = true;
+            	donePDFTaskQueueURL = queueUrl;
+            }
         	System.out.println("QueueUrl: " + queueUrl);
         }
         
    
         
-        /*	************** Set 'newPDFTask|WorkerTermination' and 'donePDFTask' Manager <--> Workers SQS queues ************** */	
+        /*	************** Set 'newPDFTask|WorkerTermination' and 'donePDFTask' Manager <--> Workers SQS queues if doesn't exist ************** */	
         
         
-        System.out.println("Creating a Manager <--> Workers 'newPDFTask|WorkerTermination' SQS queue");
-       // CreateQueueRequest createQueueRequest = new CreateQueueRequest("newPDFTaskQueue" + UUID.randomUUID());
-        CreateQueueRequest createQueueRequest = new CreateQueueRequest("newPDFTaskQueue");
-        String newPDFTaskQueueURL = sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
-        
-        System.out.println("Creating a Manager <--> Workers 'donePDFTask' SQS queue");
-        createQueueRequest = new CreateQueueRequest("donePDFTaskQueue");
-        String donePDFTaskQueueURL = sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
+        if (!newPDFTaskQueueExists){
+        	 System.out.println("Creating a Manager <--> Workers 'newPDFTask|WorkerTermination' SQS queue");
+             // CreateQueueRequest createQueueRequest = new CreateQueueRequest("newPDFTaskQueue" + UUID.randomUUID());
+             CreateQueueRequest createQueueRequest = new CreateQueueRequest("newPDFTaskQueue");
+             newPDFTaskQueueURL = sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
+        }
+        if (!donePDFTaskQueueExists){
+        	System.out.println("Creating a Manager <--> Workers 'donePDFTask' SQS queue");
+            CreateQueueRequest createQueueRequest = new CreateQueueRequest("donePDFTaskQueue");
+            donePDFTaskQueueURL = sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
+        }
         
         
         /*	************** Loop until termination message from local application **************	*/
         
+        SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(newTaskQueueURL).withMessageBody("newTask");
+        send_msg_request.addMessageAttributesEntry("inputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue("inputbucketamitelran"));
+        send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("sampleInput.txt"));
+		sqs.sendMessage(send_msg_request);
        
         
         while(true){
         	
-        	if (terminateSignal){				// If signaled to terminate & all workers finished their tasks: terminate workers, break loop
+        	/* ************** If terminated by Local App & All Workers finished their tasks **************
+        	 * - Terminate all Workers
+        	 * - Delete Manager <--> Workers queues
+        	 * - Generate last output files
+        	 * - Terminate Manager instance
+        	 */
+        	
+        	if ((numOfMessages == 0) && (terminateSignal)){	
         		terminateWorkers(ec2);
-        		break;
+        		System.out.println("Deleting queue: " + newPDFTaskQueueURL);
+                sqs.deleteQueue(new DeleteQueueRequest(newPDFTaskQueueURL));
+                System.out.println("Deleting queue: " + donePDFTaskQueueURL);
+                sqs.deleteQueue(new DeleteQueueRequest(donePDFTaskQueueURL));
+                terminateManager(ec2);
+        		return;
         	}
         	
         	System.out.println("\nReceiving messages from " + newTaskQueueURL + " SQS queue\n");
-            ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(newTaskQueueURL);
-            List<Message> messages = sqs.receiveMessage(receiveMessageRequest.withMessageAttributeNames("All")).getMessages();
+            ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(newTaskQueueURL).withMessageAttributeNames("All");
+            List<Message> messages = sqs.receiveMessage(receiveMessageRequest).getMessages();
             for (Message message : messages) {
             	printMessage(message);
                 
@@ -127,26 +165,31 @@ public class EC2Manager {
               	*/
                 
                 if ((message.getBody().equals("newTask")) && (!terminateSignal)){				// Received a "newTask" message from local application (while not signaled to terminate)
-                	for (Entry<String, String> entry : message.getAttributes().entrySet()) {
-                		if (entry.getKey().equals("inputFileBucket")){		// Get the input file bucket location
-                			inputFileBucket = entry.getValue();
+                	for (Entry<String, MessageAttributeValue> entry : message.getMessageAttributes().entrySet()) {
+                		if (entry.getKey().equals("inputFileBucket")){							// Get the input file bucket location
+                			inputFileBucket = entry.getValue().getStringValue();
+                			System.out.println(inputFileBucket);
                 		}
-                		if (entry.getKey().equals("inputFileKey")){			// Get the input file key
-                			inputFileKey = entry.getValue();
+                		if (entry.getKey().equals("inputFileKey")){								// Get the input file key
+                			inputFileKey = entry.getValue().getStringValue();
+                			System.out.println(inputFileKey);
                 		}
                     }
-                	System.out.println("Downloading input file object");
+                	System.out.println("\nDownloading input file object from S3 storage...\n");
                     S3Object inputFileObj = s3.getObject(new GetObjectRequest(inputFileBucket, inputFileKey));
                     System.out.println("Content-Type: "  + inputFileObj.getObjectMetadata().getContentType());
                     System.out.println();
-                    outputFilesMap.put(inputFileKey, new File(inputFileKey + "output"));				// Add output file element to Map
-                    int numOfTasks = sendNewPDFTask(inputFileObj, sqs, newPDFTaskQueueURL, inputFileKey);
-                    numOfMessages += numOfTasks;														// Send new PDF task to queue and increment 'newPDFTask' queue message counter
+                    outputFilesMap.put(inputFileKey, new ArrayList<String>());									// Add output file lines list to Map
+                    int numOfTasks = sendNewPDFTask(inputFileObj, sqs, newPDFTaskQueueURL, inputFileKey);		// Send input file tasks to workers 
+                    numOfMessages += numOfTasks;																// Send new PDF task to queue and increment 'newPDFTask' queue message counter
                     inputFilesMap.put(inputFileKey, new inputFile(inputFileBucket, inputFileKey, numOfTasks));		// Insert input file data to Map
+                    
+                    messageReceiptHandle = message.getReceiptHandle();
+                    sqs.deleteMessage(new DeleteMessageRequest(newTaskQueueURL, messageReceiptHandle));		// Delete 'newTask' message from 'newTaskQueue'
                     
                     // Stabilize ratio of <worker per 'n' number of messages> by creating new workers (not terminating running workers)
                     while ((numOfMessages / numOfWorkers) > numOfPDFperWorker){
-                    	createWorker(ec2, numOfWorkers);
+                    	//createWorker(ec2, numOfWorkers);
                     	numOfWorkers++;
                     }
                 	continue;
@@ -162,24 +205,20 @@ public class EC2Manager {
                 
                 
                 if (message.getBody().equals("Terminate")){				// Received a termination message from local application
-                	if (numOfMessages == 0){
-                		terminateSignal = true;						// Indicate termination after all Workers completed their tasks
-                		// Delete Manager <--> Workers queues
-                		System.out.println("Deleting queue: " + newPDFTaskQueueURL);
-                        sqs.deleteQueue(new DeleteQueueRequest(newPDFTaskQueueURL));
-                        System.out.println("Deleting queue: " + donePDFTaskQueueURL);
-                        sqs.deleteQueue(new DeleteQueueRequest(donePDFTaskQueueURL));
-                	}
-                	
+                	terminateSignal = true;
+                	messageReceiptHandle = message.getReceiptHandle();
+                	sqs.deleteMessage(new DeleteMessageRequest(newTaskQueueURL, messageReceiptHandle));		// Delete 'Terminate' message from 'newTaskQueue'
                 	break;
                 }
             }
             
             
+            
             /*	************** Go through Manager|Workers queue messages ************** */
             
+            
             System.out.println("\nReceiving messages from " + donePDFTaskQueueURL + " SQS queue\n");
-            ReceiveMessageRequest receiveMessageRequest_fromWorkers = new ReceiveMessageRequest(donePDFTaskQueueURL );
+            ReceiveMessageRequest receiveMessageRequest_fromWorkers = new ReceiveMessageRequest(donePDFTaskQueueURL).withMessageAttributeNames("All");
             List<Message> workers_messages = sqs.receiveMessage(receiveMessageRequest_fromWorkers).getMessages();
             for (Message message : workers_messages) {
             	printMessage(message);
@@ -192,42 +231,32 @@ public class EC2Manager {
               	*/
             	
             	if (message.getBody().equals("donePDFTask")){
-            		for (Entry<String, String> entry : message.getAttributes().entrySet()) {
-            			if (entry.getKey().equals("inputFileBucket")){		// Get the input file bucket location
-                			inputFileBucket = entry.getValue();
+            		for (Entry<String, MessageAttributeValue> entry : message.getMessageAttributes().entrySet()) {
+            			if (entry.getKey().equals("originalURL")){			// Get the input file bucket location
+                			inputFileBucket = entry.getValue().getStringValue();
                 		}
-            			if (entry.getKey().equals("inputFileKey")){			// Get the input file key
-                			inputFileKey = entry.getValue();
+            			if (entry.getKey().equals("newFileURL")){				// Get the input file key
+                			newFileURL = entry.getValue().getStringValue();
+                		}
+            			if (entry.getKey().equals("Operation")){				// Get the input file key
+                			operation = entry.getValue().getStringValue();
                 		}
                     }
             		inputFilesMap.get(inputFileKey).incCompletedTasks();		// Increment no. of completed tasks for given input file identifier
-            		String messageReceiptHandle = message.getReceiptHandle();
+            		messageReceiptHandle = message.getReceiptHandle();
                     sqs.deleteMessage(new DeleteMessageRequest(doneTaskQueueURL, messageReceiptHandle));		// Delete message
+                    outputFileAddLine(outputFilesMap.get(inputFileKey), operation, inputFileKey, "outputFileFor" + inputFileKey);
                     
                     // If all input file tasks are done, generate summary file
                     if (inputFilesMap.get(inputFileKey).isDone()){
-                    	generateSummaryFile(s3, outputFilesMap.get(inputFileKey), inputFileBucket);
+                    	generateSummaryFile(s3, outputFilesMap.get(inputFileKey), outputBucketName, newFileURL);
+                    	inputFilesMap.remove(inputFileKey);						// Remove input file from map
                     }
                     continue;
             	}
-            	
-            	
-            	
-            	
             }
         }
-        
-        
-        		
-        
-
-        
-        		
-        
-        
-      
-        
-        
+ 
         
 	}
 	
@@ -315,15 +344,42 @@ public class EC2Manager {
 		TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
 		ec2.terminateInstances(terminate_request);		
     }
+    
+    
+    
+    /**	************** Terminate Manager instance  **************	**/
+    
+    
+    private static void terminateManager(AmazonEC2 ec2){
+    	List<String> instanceIds = new ArrayList<String>();
+    	DescribeInstancesRequest listingRequest = new DescribeInstancesRequest();
+    	List<String> valuesT1 = new ArrayList<String>();
+    	valuesT1.add("0");
+    	Filter filter1 = new Filter("tag:Manager", valuesT1);
+    	DescribeInstancesResult result = ec2.describeInstances(listingRequest.withFilters(filter1));
+    	List<Reservation> reservations = result.getReservations();
+    	for (Reservation reservation : reservations) {
+    		List<Instance> instances = reservation.getInstances();
+    		for (Instance instance : instances) {
+    			instanceIds.add(instance.getInstanceId());
+    			System.out.println("Terminating instance:  " + instance.getInstanceId());
+    		}
+    	}
+		TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
+		ec2.terminateInstances(terminate_request);		
+    }
 	
     
     
-    /**	************** Add line to summary file **************	**/
+    /**	************** Add line to List of lines which will be inserted to the summary file **************	**/
+    /* - Line format: <operation>: input file output file --> operation performed, link to input PDF file, link to image/text/HTML output file
+     * - If exception occured, line format: <operation>: input file <a short description of the exception>
+     */
     
     
-    
-    private static void outputFileAddLine(){
-    	
+    private static void outputFileAddLine(List<String> outputFileLines, String operation, String inputFile, String outputFile){
+    	String line = "<" + operation + ">:	 " + inputFile + " 		" + outputFile;
+    	outputFileLines.add(line);
     }
     
     
@@ -331,11 +387,32 @@ public class EC2Manager {
     /**	************** Generate summary file and upload to s3 storage **************	**/
     
     
-    private static void generateSummaryFile(AmazonS3 s3, File outputFile, String bucket){
+    private static void generateSummaryFile(AmazonS3 s3, List<String> outputFileLines, String bucket, String inputFileKey){
+    	
+    	/* *** Generate HTML summary file *** */
+    	
+    	File htmlFile = new File("outputFileFor" + inputFileKey);
+    	try{
+	    	FileWriter writer = new FileWriter(htmlFile);
+	    	BufferedWriter out = new BufferedWriter(writer);
+	    	out.write("<!DOCTYPE html>\n<html>\n<body>\n");
+	    	for (int i = 0; i < outputFileLines.size(); i++) {
+				out.write("<p> " + outputFileLines.get(i) + " </p>\n");
+			}
+	    	out.write("</body>\n</html>");
+	    	out.close();
+    	}
+    	catch (Exception e){
+    		System.err.println("Error: " + e.getMessage());
+    	}
+    	
+    	/* *** Upload summary file to the Manager's S3 output bucket *** */
     	
     	System.out.println("Uploading summary file to S3 storage...\n");
-        String key = outputFile.getName().replace('\\', '_').replace('/','_').replace(':', '_');
-        PutObjectRequest req = new PutObjectRequest(bucket, key, outputFile);
+        //String key = outputFile.getName().replace('\\', '_').replace('/','_').replace(':', '_');
+    	String key = htmlFile.getName();
+    	System.out.println("Output File Name: " + key);
+        PutObjectRequest req = new PutObjectRequest(bucket, key, htmlFile);
         s3.putObject(req);
     }
     
@@ -346,7 +423,7 @@ public class EC2Manager {
     
     
     private static void printMessage(Message message){
-        System.out.println("  *** Message ***");
+        System.out.println("  ******************** Message ********************");
         System.out.println("    MessageId:     " + message.getMessageId());
         System.out.println("    ReceiptHandle: " + message.getReceiptHandle());
         System.out.println("    MD5OfBody:     " + message.getMD5OfBody());
@@ -356,6 +433,12 @@ public class EC2Manager {
             System.out.println("    Name:  " + entry.getKey());
             System.out.println("    Value: " + entry.getValue());
         }
+        for (Entry<String, MessageAttributeValue> entry : message.getMessageAttributes().entrySet()) {
+            System.out.println("  Attribute (User made) ");
+            System.out.println("    Name:  " + entry.getKey());
+            System.out.println("    String Value: " + entry.getValue().getStringValue());
+        }
+        System.out.println("**************************************************");
         System.out.println();
     }
     

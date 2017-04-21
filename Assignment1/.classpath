@@ -34,7 +34,11 @@
 	</classpathentry>
 	<classpathentry kind="lib" path="C:/Users/Amir/Downloads/typica-1.7.2/typica.jar"/>
 	<classpathentry kind="lib" path="C:/Users/Amir/Downloads/fontbox-1.8.13.jar"/>
-	<classpathentry kind="lib" path="C:/Users/Amir/Downloads/pdfbox-1.8.13.jar"/>
 	<classpathentry kind="lib" path="C:/Users/Amir/Downloads/apache-commons.jar/apache-commons.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Amir/Downloads/slf4j-1.7.25/slf4j-api-1.7.25.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Amir/Downloads/slf4j-1.7.25/slf4j-simple-1.7.25.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Amir/Downloads/commons-io-2.5-bin/commons-io-2.5/commons-io-2.5.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Amir/Downloads/pdfbox-2.0.5.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Amir/Downloads/pdfbox-1.8.13.jar"/>
 	<classpathentry kind="output" path="target/classes"/>
 </classpath>
