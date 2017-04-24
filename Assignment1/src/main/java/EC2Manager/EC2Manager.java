@@ -12,10 +12,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.PropertiesCredentials;
+import com.amazonaws.auth.AWSCredentialsProvider;
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.ec2.AmazonEC2;
-import com.amazonaws.services.ec2.AmazonEC2Client;
+import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.Filter;
@@ -23,10 +24,10 @@ import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.sqs.AmazonSQS;
-import com.amazonaws.services.sqs.AmazonSQSClient;
+import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.CreateQueueRequest;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.DeleteQueueRequest;
@@ -67,17 +68,22 @@ public class EC2Manager {
 
 	public static void main(String[] args) throws IOException {
 		
-        AWSCredentials credentials = new PropertiesCredentials(EC2Manager.class.getResourceAsStream("AwsCredentials.properties"));
-        globalVars.ec2 = new AmazonEC2Client(credentials);	// EC2 client 
+		
+        //AWSCredentials credentials = new PropertiesCredentials(EC2Manager.class.getResourceAsStream("AwsCredentials.properties"));
+        /*globalVars.ec2 = new AmazonEC2Client(credentials);	// EC2 client
+        globalVars.ec2 = AmazonEC2ClientBuilder.standard().withCredentials(credentials).withRegion(Regions.US_EAST_1).build();
         globalVars.s3 = new AmazonS3Client(credentials);		// S3 Storage client
-        globalVars.sqs = new AmazonSQSClient(credentials);	// SQS client
+        globalVars.sqs = new AmazonSQSClient(credentials);	// SQS client */
+        AWSCredentialsProvider credentials = new DefaultAWSCredentialsProviderChain();			// Search and get credentials file in system
+        globalVars.ec2 = AmazonEC2ClientBuilder.standard().withCredentials(credentials).withRegion(Regions.US_EAST_1).build();
+        globalVars.s3 = AmazonS3ClientBuilder.standard().withCredentials(credentials).withRegion(Regions.US_EAST_1).build();
+        globalVars.sqs = AmazonSQSClientBuilder.standard().withCredentials(credentials).withRegion(Regions.US_EAST_1).build();
         boolean newTaskQueueExists = false;					// Boolean flag to indicate if need to a create a 'newTask' queue
         boolean newPDFTaskQueueExists = false;				// Boolean flag to indicate if need to create a new 'newPDFTask' queue
         boolean donePDFTaskQueueExists = false;				// Boolean flag to indicate if need to create a new 'donePDFTask' queue
         String donePDFTaskQueueURL = null;					// 'donePDFTask' Manager <--> Workers queue
         String inputFileBucket = null;						// S3 bucket of the input file with a list of PDF URLs and operations to perform	
         String inputFileKey = null;							// Key of the input file in the S3 Storage
-        String inputFileUniqueKey = null;					// Generating a unique input file key in order to tell different files with same name
         String newFileURL = null;							// URL of a new image file as given by Worker
         String operation = null;							// The operation performed by Worker for a given PDF URL
         String messageReceiptHandle = null;					// Message receipt handle, required when deleting queue messages
@@ -103,13 +109,6 @@ public class EC2Manager {
         	}   	
         }
         */
-        List<String> outputCheck = new ArrayList<String>();
-        outputCheck.add("toHTML" + ":\t" + "inputFileBucket" + "\t" + "newFileURL");
-        outputCheck.add("toHTML" + ":\t" + "inputFileBucket" + "\t" + "newFileURL");
-        outputCheck.add("toHTML" + ":\t" + "inputFileBucket" + "\t" + "newFileURL");
-        outputCheck.add("toHTML" + ":\t" + "inputFileBucket" + "\t" + "newFileURL");
-        outputCheck.add("toHTML" + ":\t" + "inputFileBucket" + "\t" + "newFileURL");
-        generateSummaryFile(globalVars.s3, outputCheck, "inputbucketamitelran", "test.txt");
         globalVars.numOfPDFperWorker = 10;
         
         /*	************** Get 'newTask|Termination' Local Application <--> Manager SQS queue, and check if Manager <--> Workers queues exist ************** */	
@@ -119,7 +118,6 @@ public class EC2Manager {
         	URI uri = new URI(queueUrl);
         	String path = uri.getPath();
         	String queueName = path.substring(path.lastIndexOf('/') + 1); 
-        	System.out.println("queuename: " + queueName);
             if (queueName.equals("newTaskQueue")){
             	newTaskQueueExists = true;
             	globalVars.newTaskQueueURL = queueUrl;
@@ -137,9 +135,10 @@ public class EC2Manager {
         
    
         
-        /*	************** Set 'newPDFTask|WorkerTermination' and 'donePDFTask' Manager <--> Workers SQS queues if doesn't exist ************** */	
+        /*	************** Create 'newPDFTask|WorkerTermination' and 'donePDFTask' Manager <--> Workers SQS queues if doesn't exist ************** */	
         
-        queueAttributes.put("VisibilityTimeout", Integer.toString(120));			// Set attribute VisibilityTimeout to be 2 minutes
+        
+        queueAttributes.put("VisibilityTimeout", Integer.toString(300));						// Set attribute VisibilityTimeout to be 5 minutes
         if (!newTaskQueueExists){
         	System.out.println("Creating a Local Applications <--> Manager 'newTask' SQS queue...");
             CreateQueueRequest createQueueRequest = new CreateQueueRequest("newTaskQueue").withAttributes(queueAttributes);
@@ -220,25 +219,22 @@ public class EC2Manager {
             			else if (entry.getKey().equals("Operation")){				// Get the input file key
                 			operation = entry.getValue().getStringValue();
                 		}
-            			else if (entry.getKey().equals("inputFileUniqueKey")){
-            				inputFileUniqueKey = entry.getValue().getStringValue();
-            			}
                     }
             		
             		// Ensure input file corresponding key in maps are initialized
-            		if ((globalVars.inputFilesMap.get(inputFileUniqueKey) != null) && (globalVars.inputFilesMap.get(inputFileUniqueKey) != null)){
-	            		globalVars.numOfMessages--;																			// Decrement number of 'online' uncompleted tasks
+            		if ((globalVars.inputFilesMap.get(inputFileKey) != null) && (globalVars.inputFilesMap.get(inputFileKey) != null)){
+	            		globalVars.numOfMessages--;																		// Decrement number of 'online' uncompleted tasks
 	            		String line = operation + "\t" + inputFileBucket + "\t" + newFileURL;
-	            		globalVars.outputFilesMap.get(inputFileUniqueKey).add(line);											// Add completed task line to the List<String> of output file lines
-	            		globalVars.inputFilesMap.get(inputFileUniqueKey).incCompletedTasks();									// Increment no. of completed tasks for given input file identifier
+	            		globalVars.outputFilesMap.get(inputFileKey).add(line);											// Add completed task line to the List<String> of output file lines
+	            		globalVars.inputFilesMap.get(inputFileKey).incCompletedTasks();									// Increment no. of completed tasks for given input file identifier
 	            		messageReceiptHandle = message.getReceiptHandle();
 	            		globalVars.sqs.deleteMessage(new DeleteMessageRequest(donePDFTaskQueueURL, messageReceiptHandle));		// Delete 'donePDFTask' message from queue after handling it
 	            		
 	            		// If all input file's tasks are done, generate summary file, upload to S3, send Done Task message to Local Application queue
-	                    if (globalVars.inputFilesMap.get(inputFileUniqueKey).isDone()){
-	                    	sendDoneTask(globalVars.s3, globalVars.sqs, globalVars.inputFilesMap.get(inputFileUniqueKey).getFileQueueURL(), inputFileKey, inputFileUniqueKey, outputBucketName, globalVars.outputFilesMap);
-	                    	globalVars.inputFilesMap.remove(inputFileUniqueKey);						// Remove input file from map
-	                    	globalVars.outputFilesMap.remove(inputFileUniqueKey);						// Remove output file from map
+	                    if (globalVars.inputFilesMap.get(inputFileKey).isDone()){
+	                    	sendDoneTask(globalVars.s3, globalVars.sqs, globalVars.inputFilesMap.get(inputFileKey).getFileQueueURL(), inputFileKey, outputBucketName, globalVars.outputFilesMap);
+	                    	globalVars.inputFilesMap.remove(inputFileKey);						// Remove input file from map
+	                    	globalVars.outputFilesMap.remove(inputFileKey);						// Remove output file from map
 	                    }
             		}
                     continue;
@@ -253,8 +249,8 @@ public class EC2Manager {
 	/**	************** Generate & upload summary file to S3, send done task to queue **************	**/
 	
 	
-	private static void sendDoneTask(AmazonS3 s3, AmazonSQS sqs, String doneTaskQueueURL, String inputFileKey, String inputFileUniqueKey, String outputBucketName, Map<String, List<String>> outputFilesMap) throws IOException{
-		String outputFileURL = generateSummaryFile(s3, outputFilesMap.get(inputFileUniqueKey), outputBucketName, inputFileKey);
+	private static void sendDoneTask(AmazonS3 s3, AmazonSQS sqs, String doneTaskQueueURL, String inputFileKey, String outputBucketName, Map<String, List<String>> outputFilesMap) throws IOException{
+		String outputFileURL = generateSummaryFile(s3, outputFilesMap.get(inputFileKey), outputBucketName, inputFileKey);
 		SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(doneTaskQueueURL).withMessageBody("taskDone");
         send_msg_request.addMessageAttributesEntry("outputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue(outputFileURL));
         send_msg_request.addMessageAttributesEntry("outputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("outputFileFor" + inputFileKey));
@@ -308,8 +304,10 @@ public class EC2Manager {
     			System.out.println("Terminating instance:  " + instance.getInstanceId());
     		}
     	}
-		TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
-		ec2.terminateInstances(terminate_request);		
+    	if (instanceIds != null){
+			TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
+			ec2.terminateInstances(terminate_request);		
+    	}
     }
 	
 

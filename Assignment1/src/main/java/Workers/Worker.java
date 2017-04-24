@@ -1,57 +1,36 @@
 package Workers;
 
 import java.awt.image.BufferedImage;
-import java.io.BufferedInputStream;
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.net.URLConnection;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.util.ImageIOUtil;
-import org.apache.pdfbox.util.PDFImageWriter;
 import org.apache.pdfbox.util.PDFText2HTML;
 import org.apache.pdfbox.util.PDFTextStripper;
 
-import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
-import com.amazonaws.auth.PropertiesCredentials;
-import com.amazonaws.services.ec2.AmazonEC2;
-import com.amazonaws.services.ec2.AmazonEC2Client;
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.sqs.AmazonSQS;
-import com.amazonaws.services.sqs.AmazonSQSClient;
+import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.MessageAttributeValue;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 import com.sun.org.apache.xml.internal.utils.URI;
-
-import SQS.SimpleQueueService;
 
 
 /**	**************************  Worker Flow  **************************
@@ -76,17 +55,15 @@ public class Worker {
 
 	public static void main(String[] args) throws IOException {
 		
-		AWSCredentials credentials = new PropertiesCredentials(Worker.class.getResourceAsStream("AwsCredentials.properties"));
-        AmazonEC2 ec2 = new AmazonEC2Client(credentials);
-        AmazonS3 s3 = new AmazonS3Client(credentials);		// S3 Storage client
-        AmazonSQS sqs = new AmazonSQSClient(credentials);	// SQS client
+		AWSCredentialsProvider credentials = new DefaultAWSCredentialsProviderChain();			// Search and get credentials file in system
+        AmazonS3 s3 = AmazonS3ClientBuilder.standard().withCredentials(credentials).withRegion(Regions.US_EAST_1).build();
+        AmazonSQS sqs = AmazonSQSClientBuilder.standard().withCredentials(credentials).withRegion(Regions.US_EAST_1).build();
         String newPDFTaskQueueURL = null;					// 'newPDFTask|WorkerTermination' Manager <--> Workers queue
         String donePDFTaskQueueURL = null;					// 'donePDFTask' Manager <--> Workers queue
         String operation = null;							// Operation to perform over given PDF URL
         String pdfURL = null;								// Given PDF URL
         String newFileURL = null;							// URL of a new file (after operating over input file)
         String inputFileKey = null;							// The key (name) of the input file originating the PDF task
-        String inputFileUniqueKey = null;					// The unique key of the input file originating the PDF task
         String outputBucketName = "outputworkersbucketamityoav";
         
         
@@ -112,7 +89,6 @@ public class Worker {
         
         while(true){
         	
-        	//System.out.println("Retreiving messages from " + newPDFTaskQueueURL + " SQS queue...\n");
             ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(newPDFTaskQueueURL).withMessageAttributeNames("All");
             List<Message> messages = sqs.receiveMessage(receiveMessageRequest).getMessages();
             for (Message message : messages) {
@@ -140,12 +116,9 @@ public class Worker {
                 		else if (entry.getKey().equals("PDF_URL")){						// Get the PDF's URL
                 			pdfURL = entry.getValue().getStringValue();
                 		}
-                		else if (entry.getKey().equals("inputFileUniqueKey")){
-                			inputFileUniqueKey = entry.getValue().getStringValue();
-                		}
                     }
                 	newFileURL = handleTask(s3, outputBucketName, inputFileKey, operation, pdfURL);
-                	sendDonePDFTask(sqs, donePDFTaskQueueURL, pdfURL, operation, newFileURL, inputFileUniqueKey);		// Send 'Done PDF Task' message to Manager <--> Workers queue
+                	sendDonePDFTask(sqs, donePDFTaskQueueURL, pdfURL, operation, newFileURL);		// Send 'Done PDF Task' message to Manager <--> Workers queue
                 	String messageReceiptHandle = message.getReceiptHandle();
                     sqs.deleteMessage(new DeleteMessageRequest(newPDFTaskQueueURL, messageReceiptHandle));		// Delete 'newPDFTask' message from 'newTaskQueue'
                 	continue;
@@ -322,12 +295,11 @@ public class Worker {
 	/**	************** Send 'DonePDFTask' message to Manager <--> Workers 'donePDFTaskQueue' queue **************	**/
     
     
-    private static void sendDonePDFTask(AmazonSQS sqs, String donePDFTaskQueueURL, String originalURL, String operation, String newFileURL, String inputFileUniqueKey){
+    private static void sendDonePDFTask(AmazonSQS sqs, String donePDFTaskQueueURL, String originalURL, String operation, String newFileURL){
     	SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(donePDFTaskQueueURL).withMessageBody("donePDFTask");
         send_msg_request.addMessageAttributesEntry("originalURL", new MessageAttributeValue().withDataType("String").withStringValue(originalURL));
         send_msg_request.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").withStringValue(operation));
         send_msg_request.addMessageAttributesEntry("newFileURL", new MessageAttributeValue().withDataType("String").withStringValue(newFileURL));
-        send_msg_request.addMessageAttributesEntry("inputFileUniqueKey", new MessageAttributeValue().withDataType("String").withStringValue(inputFileUniqueKey));
 		sqs.sendMessage(send_msg_request);
     }
 	

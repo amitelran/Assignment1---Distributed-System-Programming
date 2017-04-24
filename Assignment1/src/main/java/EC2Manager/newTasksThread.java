@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.Map.Entry;
 
 import com.amazonaws.AmazonServiceException;
@@ -27,13 +26,12 @@ import com.amazonaws.services.sqs.model.SendMessageRequest;
 public class newTasksThread implements Runnable {
 	String inputFileBucket = null;						// S3 bucket of the input file with a list of PDF URLs and operations to perform	
     String inputFileKey = null;							// Key of the input file in the S3 Storage
-    String inputFileUniqueKey = null;					// Generating a unique input file key in order to tell different files with same name
     String doneTaskQueueURL = null;
     String messageReceiptHandle = null;
     
     
+    /**	**************************	Go over 'newTaskQueue'  ************************** */
     
- 
 	public void run() {
 		while(true){
 	        ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(globalVars.newTaskQueueURL).withMessageAttributeNames("All");
@@ -66,35 +64,33 @@ public class newTasksThread implements Runnable {
 	                System.out.println("Content-Type: "  + inputFileObj.getObjectMetadata().getContentType());
 	                System.out.println();
 	                
-	                inputFileUniqueKey = inputFileKey + UUID.randomUUID();											// Generate unique key for input file
-	                globalVars.outputFilesMap.put(inputFileUniqueKey, new ArrayList<String>());								// Add output file lines list to Map
+	                
+	                globalVars.outputFilesMap.put(inputFileKey, new ArrayList<String>());								// Add output file lines list to Map
 	                int numOfTasks;
 					try {
-						numOfTasks = sendNewPDFTask(inputFileObj, globalVars.sqs, globalVars.newPDFTaskQueueURL, inputFileKey, inputFileUniqueKey);
+						numOfTasks = sendNewPDFTask(inputFileObj, globalVars.sqs, globalVars.newPDFTaskQueueURL, inputFileKey);
 						globalVars.numOfMessages += numOfTasks;																	// Increment 'newPDFTask' queue message counter
-		                globalVars.inputFilesMap.put(inputFileUniqueKey, new inputFile(inputFileBucket, inputFileKey, inputFileUniqueKey, doneTaskQueueURL, numOfTasks));							// Insert input file data to Map by <uniqueKey, inputFile object>
+		                globalVars.inputFilesMap.put(inputFileKey, new inputFile(inputFileBucket, inputFileKey, doneTaskQueueURL, numOfTasks));							// Insert input file data to Map by <inputFileKey, inputFile object>
 		                
 		                messageReceiptHandle = message.getReceiptHandle();
 		                globalVars.sqs.deleteMessage(new DeleteMessageRequest(globalVars.newTaskQueueURL, messageReceiptHandle));				// Delete 'newTask' message from 'newTaskQueue'
-		                /*
+		                
 		                // Stabilize ratio of <worker per 'n' number of messages> by creating new workers (not terminating running workers)
-		                if (numOfMessages > 0){
-		                	if (numOfWorkers == 0){					// Create a new worker to avoid dividing by zero
-		                		createWorker(ec2, numOfWorkers);
-		                		numOfWorkers++;
+		                if (globalVars.numOfMessages > 0){
+		                	if (globalVars.numOfWorkers == 0){					// Create a new worker to avoid dividing by zero
+		                		createWorker(globalVars.ec2, globalVars.numOfWorkers);
+		                		globalVars.numOfWorkers++;
 		                	}
-		                    while ((numOfMessages / numOfWorkers) > numOfPDFperWorker){
-		                    	createWorker(ec2, numOfWorkers);
-		                    	numOfWorkers++;
+		                    while ((globalVars.numOfMessages / globalVars.numOfWorkers) > globalVars.numOfPDFperWorker){
+		                    	createWorker(globalVars.ec2, globalVars.numOfWorkers);
+		                    	globalVars.numOfWorkers++;
 		                    }
 		                }
-		                */
+		                
 					} 
 					catch (IOException e) {
 						e.printStackTrace();
-					}		
-	                
-	                
+					}		 
 	                SendMessageRequest send_msg_request1 = new SendMessageRequest().withQueueUrl(globalVars.newTaskQueueURL).withMessageBody("Terminate");
 	                globalVars.sqs.sendMessage(send_msg_request1);
 	            	continue;
@@ -108,8 +104,8 @@ public class newTasksThread implements Runnable {
 	             */
 	            
 	            
-	            if (message.getBody().equals("Terminate")){													// Received a termination message from local application
-	            	globalVars.terminateSignal = true;																	// Set 'terminateSignal' flag 'on'
+	            if (message.getBody().equals("Terminate")){											// Received a termination message from local application
+	            	globalVars.terminateSignal = true;												// Set 'terminateSignal' flag 'on'
 	            	messageReceiptHandle = message.getReceiptHandle();
 	            	globalVars.sqs.deleteMessage(new DeleteMessageRequest(globalVars.newTaskQueueURL, messageReceiptHandle));		// Delete 'Terminate' message from 'newTaskQueue'
 	            	return;
@@ -126,7 +122,7 @@ public class newTasksThread implements Runnable {
     /**	************** Send new PDF task to queue **************	**/
         
         
-    private static int sendNewPDFTask(S3Object inputFileObj, AmazonSQS sqs, String newPDFTaskQueueURL, String fileKey, String fileUniqueKey) throws IOException{
+    private static int sendNewPDFTask(S3Object inputFileObj, AmazonSQS sqs, String newPDFTaskQueueURL, String fileKey) throws IOException{
 		int numOfMessages = 0;
 		BufferedReader reader = new BufferedReader(new InputStreamReader(inputFileObj.getObjectContent()));		// Read content of input file object
 	    while (true) {										// Read each file line, generate PDF task message to 'newPDFTaskQueue' Manager|Workers queue
@@ -139,10 +135,9 @@ public class newTasksThread implements Runnable {
 	        System.out.println("Operation:    " + operation);
 	        System.out.println("PDF URL:    " + pdfURL);
 	        
-	        // Send 'newPDFTask' message to queue, including attributes: input file name, input file unique key, operation to perform, PDF URL
+	        // Send 'newPDFTask' message to queue, including attributes: input file name, operation to perform, PDF URL
 	        SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(newPDFTaskQueueURL).withMessageBody("newPDFTask");
 	        send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue(fileKey));
-	        send_msg_request.addMessageAttributesEntry("inputFileUniqueKey", new MessageAttributeValue().withDataType("String").withStringValue(fileUniqueKey));
 	        send_msg_request.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").withStringValue(operation));
 	        send_msg_request.addMessageAttributesEntry("PDF_URL", new MessageAttributeValue().withDataType("String").withStringValue(pdfURL));
 			sqs.sendMessage(send_msg_request);
@@ -178,7 +173,5 @@ public class newTasksThread implements Runnable {
 	        System.out.println("Error Code: " + ase.getErrorCode());
 	        System.out.println("Request ID: " + ase.getRequestId());
         }
-    
-    }
-    
+    }  
 }
