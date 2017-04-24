@@ -33,6 +33,8 @@ import org.apache.pdfbox.util.PDFText2HTML;
 import org.apache.pdfbox.util.PDFTextStripper;
 
 import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.AWSCredentialsProvider;
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.auth.PropertiesCredentials;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
@@ -73,7 +75,7 @@ IMPORTANT:
 public class Worker {
 
 	public static void main(String[] args) throws IOException {
-
+		
 		AWSCredentials credentials = new PropertiesCredentials(Worker.class.getResourceAsStream("AwsCredentials.properties"));
         AmazonEC2 ec2 = new AmazonEC2Client(credentials);
         AmazonS3 s3 = new AmazonS3Client(credentials);		// S3 Storage client
