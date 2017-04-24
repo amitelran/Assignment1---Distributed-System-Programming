@@ -22,6 +22,7 @@ import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.CannedAccessControlList;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
@@ -246,11 +247,14 @@ public class Worker {
     	if (pdfFile != null){
     		pdfFile.close();
     	}
-		PutObjectRequest req = new PutObjectRequest(bucketName, outputFileKey, outputFile);
-        s3.putObject(req);
-        URL outputFileURL = s3.getUrl(bucketName, outputFileKey);
-        newFileURL = outputFileURL.toString();
-        System.out.println("New File URL: " + newFileURL);
+    	if (outputFileKey != null){
+    		PutObjectRequest req = new PutObjectRequest(bucketName, outputFileKey, outputFile);
+            s3.putObject(req);
+            s3.setObjectAcl(bucketName, outputFileKey, CannedAccessControlList.PublicRead);
+            URL outputFileURL = s3.getUrl(bucketName, outputFileKey);
+            newFileURL = outputFileURL.toString();
+    	}
+        System.out.println("New File URL: " + newFileURL + "\n");
         return newFileURL;
     }
     

@@ -25,6 +25,7 @@ import com.amazonaws.services.ec2.model.Reservation;
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.CannedAccessControlList;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
@@ -343,6 +344,7 @@ public class EC2Manager {
     	System.out.println("Output File Name: " + key);
         PutObjectRequest req = new PutObjectRequest(bucket, key, summaryFile);
         s3.putObject(req);
+        s3.setObjectAcl(bucket, key, CannedAccessControlList.PublicRead);
         URL outputFileURL = s3.getUrl(bucket, key);
         System.out.println("Output File URL: " + outputFileURL.toString());
         return outputFileURL.toString();
