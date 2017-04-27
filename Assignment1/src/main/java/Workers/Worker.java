@@ -119,7 +119,7 @@ public class Worker {
                 		}
                     }
                 	newFileURL = handleTask(s3, outputBucketName, inputFileKey, operation, pdfURL);
-                	sendDonePDFTask(sqs, donePDFTaskQueueURL, pdfURL, operation, newFileURL);		// Send 'Done PDF Task' message to Manager <--> Workers queue
+                	sendDonePDFTask(sqs, donePDFTaskQueueURL, pdfURL, operation, newFileURL, inputFileKey);		// Send 'Done PDF Task' message to Manager <--> Workers queue
                 	String messageReceiptHandle = message.getReceiptHandle();
                     sqs.deleteMessage(new DeleteMessageRequest(newPDFTaskQueueURL, messageReceiptHandle));		// Delete 'newPDFTask' message from 'newTaskQueue'
                 	continue;
@@ -299,12 +299,13 @@ public class Worker {
 	/**	************** Send 'DonePDFTask' message to Manager <--> Workers 'donePDFTaskQueue' queue **************	**/
     
     
-    private static void sendDonePDFTask(AmazonSQS sqs, String donePDFTaskQueueURL, String originalURL, String operation, String newFileURL){
+    private static void sendDonePDFTask(AmazonSQS sqs, String donePDFTaskQueueURL, String originalURL, String operation, String newFileURL, String inputFileKey){
     	SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(donePDFTaskQueueURL).withMessageBody("donePDFTask");
         send_msg_request.addMessageAttributesEntry("originalURL", new MessageAttributeValue().withDataType("String").withStringValue(originalURL));
         send_msg_request.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").withStringValue(operation));
         send_msg_request.addMessageAttributesEntry("newFileURL", new MessageAttributeValue().withDataType("String").withStringValue(newFileURL));
-		sqs.sendMessage(send_msg_request);
+        send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue(inputFileKey));
+        sqs.sendMessage(send_msg_request);
     }
 	
 	

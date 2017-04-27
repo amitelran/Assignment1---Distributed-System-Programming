@@ -36,7 +36,7 @@ public class inputFile {
 	}
 	
 	public void incCompletedTasks(){
-		this.num_of_completed_tasks++;
+		System.out.println(++this.num_of_completed_tasks);
 	}
 	
 	public boolean isDone(){

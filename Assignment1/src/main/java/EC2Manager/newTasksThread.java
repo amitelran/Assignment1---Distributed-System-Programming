@@ -3,13 +3,17 @@ package EC2Manager;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
 
+import org.apache.commons.codec.binary.Base64;
+
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.model.CreateTagsRequest;
+import com.amazonaws.services.ec2.model.IamInstanceProfileSpecification;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
@@ -24,6 +28,7 @@ import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 
 public class newTasksThread implements Runnable {
+	public static String WORKER_JAR_URL = "https://s3.amazonaws.com/yoavamit1assignment/worker-1.0.0.jar"; 
 	String inputFileBucket = null;						// S3 bucket of the input file with a list of PDF URLs and operations to perform	
     String inputFileKey = null;							// Key of the input file in the S3 Storage
     String doneTaskQueueURL = null;
@@ -156,6 +161,22 @@ public class newTasksThread implements Runnable {
 			System.out.println("Creating Worker instance...");
 			RunInstancesRequest request = new RunInstancesRequest("ami-51792c38", 1, 1);
 			request.setInstanceType(InstanceType.T1Micro.toString());
+			
+			request.setIamInstanceProfile(new IamInstanceProfileSpecification().withName("ec2_s3"));
+			request.setKeyName("YoavKeypair"); // TODO remove
+
+			String userData = "#!/bin/bash\n"
+					+ "wget " + WORKER_JAR_URL + " -O worker.jar\n"
+					+ "java -jar worker.jar ";
+			
+			String encodedUserData = null;
+			try {
+				encodedUserData = new String( Base64.encodeBase64( userData.getBytes( "UTF-8" )), "UTF-8" );
+			} catch (UnsupportedEncodingException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			request.setUserData( encodedUserData );
 			
 			List<Instance> instances = ec2.runInstances(request).getReservation().getInstances();
 			String instanceId = instances.get(0).getInstanceId();

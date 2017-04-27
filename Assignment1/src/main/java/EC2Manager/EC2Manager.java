@@ -94,7 +94,7 @@ public class EC2Manager {
        
 		
         /*	************** Get 'n' stating number of messages per worker ************** */	
-        /*
+
         if ((args.length < 1) || (Integer.parseInt(args[0]) < 1)){					
         	System.out.println("Integer stating how many PDFs per Worker has not been provided by Local Application");
         	return;
@@ -109,8 +109,6 @@ public class EC2Manager {
         		return;
         	}   	
         }
-        */
-        globalVars.numOfPDFperWorker = 10;
         
         /*	************** Get 'newTask|Termination' Local Application <--> Manager SQS queue, and check if Manager <--> Workers queues exist ************** */	
         
@@ -168,8 +166,9 @@ public class EC2Manager {
         /*	************** Loop until termination message from local application **************	*/
         
         SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(globalVars.newTaskQueueURL).withMessageBody("newTask");
-        send_msg_request.addMessageAttributesEntry("inputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue("inputbucketamitelran"));
-        send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("input.txt"));
+        send_msg_request.addMessageAttributesEntry("inputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue("akiajfcl5i5zf7r65vla.assignment1"));
+        send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("sampleInput.txt"));
+        send_msg_request.addMessageAttributesEntry("taskDoneQueueUrl", new MessageAttributeValue().withDataType("String").withStringValue("https://sqs.us-east-1.amazonaws.com/668449302465/doneTaskQueue_blablablabla"));
         globalVars.sqs.sendMessage(send_msg_request);
        
         while(true){
@@ -220,11 +219,15 @@ public class EC2Manager {
             			else if (entry.getKey().equals("Operation")){				// Get the input file key
                 			operation = entry.getValue().getStringValue();
                 		}
+            			else if (entry.getKey().equals("inputFileKey")){
+            				inputFileKey = entry.getValue().getStringValue();
+            			}
                     }
             		
             		// Ensure input file corresponding key in maps are initialized
-            		if ((globalVars.inputFilesMap.get(inputFileKey) != null) && (globalVars.inputFilesMap.get(inputFileKey) != null)){
+            		if ((globalVars.inputFilesMap.containsKey(inputFileKey)) && (globalVars.outputFilesMap.containsKey(inputFileKey))){
 	            		globalVars.numOfMessages--;																		// Decrement number of 'online' uncompleted tasks
+	            		System.out.println(globalVars.numOfMessages);
 	            		String line = operation + "\t" + inputFileBucket + "\t" + newFileURL;
 	            		globalVars.outputFilesMap.get(inputFileKey).add(line);											// Add completed task line to the List<String> of output file lines
 	            		globalVars.inputFilesMap.get(inputFileKey).incCompletedTasks();									// Increment no. of completed tasks for given input file identifier
@@ -279,7 +282,7 @@ public class EC2Manager {
     			System.out.println("Terminating instance:  " + instance.getInstanceId());
     		}
     	}
-    	if (instanceIds != null){
+    	if (!instanceIds.isEmpty()){
     		TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
     		ec2.terminateInstances(terminate_request);
     	}		
@@ -293,9 +296,7 @@ public class EC2Manager {
     private static void terminateManager(AmazonEC2 ec2){
     	List<String> instanceIds = new ArrayList<String>();
     	DescribeInstancesRequest listingRequest = new DescribeInstancesRequest();
-    	List<String> valuesT1 = new ArrayList<String>();
-    	valuesT1.add("0");
-    	Filter filter1 = new Filter("tag:Manager", valuesT1);
+    	Filter filter1 = new Filter("tag:Manager");
     	DescribeInstancesResult result = ec2.describeInstances(listingRequest.withFilters(filter1));
     	List<Reservation> reservations = result.getReservations();
     	for (Reservation reservation : reservations) {
@@ -305,7 +306,7 @@ public class EC2Manager {
     			System.out.println("Terminating instance:  " + instance.getInstanceId());
     		}
     	}
-    	if (instanceIds != null){
+    	if (!instanceIds.isEmpty()){
 			TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
 			ec2.terminateInstances(terminate_request);		
     	}
