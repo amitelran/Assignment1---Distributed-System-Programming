@@ -68,13 +68,6 @@ IMPORTANT:  the manager must process requests from local applications simultaneo
 public class EC2Manager {
 
 	public static void main(String[] args) throws IOException {
-		
-		
-        //AWSCredentials credentials = new PropertiesCredentials(EC2Manager.class.getResourceAsStream("AwsCredentials.properties"));
-        /*globalVars.ec2 = new AmazonEC2Client(credentials);	// EC2 client
-        globalVars.ec2 = AmazonEC2ClientBuilder.standard().withCredentials(credentials).withRegion(Regions.US_EAST_1).build();
-        globalVars.s3 = new AmazonS3Client(credentials);		// S3 Storage client
-        globalVars.sqs = new AmazonSQSClient(credentials);	// SQS client */
         AWSCredentialsProvider credentials = new DefaultAWSCredentialsProviderChain();			// Search and get credentials file in system
         globalVars.ec2 = AmazonEC2ClientBuilder.standard().withCredentials(credentials).withRegion(Regions.US_EAST_1).build();
         globalVars.s3 = AmazonS3ClientBuilder.standard().withCredentials(credentials).withRegion(Regions.US_EAST_1).build();
@@ -94,7 +87,7 @@ public class EC2Manager {
        
 		
         /*	************** Get 'n' stating number of messages per worker ************** */	
-
+        /*
         if ((args.length < 1) || (Integer.parseInt(args[0]) < 1)){					
         	System.out.println("Integer stating how many PDFs per Worker has not been provided by Local Application");
         	return;
@@ -109,7 +102,7 @@ public class EC2Manager {
         		return;
         	}   	
         }
-        
+        */
         /*	************** Get 'newTask|Termination' Local Application <--> Manager SQS queue, and check if Manager <--> Workers queues exist ************** */	
         
         
@@ -129,7 +122,7 @@ public class EC2Manager {
             	donePDFTaskQueueExists = true;
             	donePDFTaskQueueURL = queueUrl;
             }
-        	System.out.println("QueueUrl: " + queueUrl);
+        	//System.out.println("QueueUrl: " + queueUrl);
         }
         
    
@@ -145,7 +138,6 @@ public class EC2Manager {
         }
         if (!newPDFTaskQueueExists){
         	 System.out.println("Creating a Manager <--> Workers 'newPDFTask|WorkerTermination' SQS queue...");
-             // CreateQueueRequest createQueueRequest = new CreateQueueRequest("newPDFTaskQueue" + UUID.randomUUID());
              CreateQueueRequest createQueueRequest = new CreateQueueRequest("newPDFTaskQueue").withAttributes(queueAttributes);
              globalVars.newPDFTaskQueueURL = globalVars.sqs.createQueue(createQueueRequest).getQueueUrl();		// Storing the newly created queue URL
         }
@@ -164,13 +156,13 @@ public class EC2Manager {
         
         
         /*	************** Loop until termination message from local application **************	*/
-        
+        /*
         SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(globalVars.newTaskQueueURL).withMessageBody("newTask");
         send_msg_request.addMessageAttributesEntry("inputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue("akiajfcl5i5zf7r65vla.assignment1"));
         send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("sampleInput.txt"));
         send_msg_request.addMessageAttributesEntry("taskDoneQueueUrl", new MessageAttributeValue().withDataType("String").withStringValue("https://sqs.us-east-1.amazonaws.com/668449302465/doneTaskQueue_blablablabla"));
         globalVars.sqs.sendMessage(send_msg_request);
-       
+       */
         while(true){
         	
         	/* ************** If terminated by Local App & All Workers finished their tasks **************

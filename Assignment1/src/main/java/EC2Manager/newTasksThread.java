@@ -33,6 +33,7 @@ public class newTasksThread implements Runnable {
     String inputFileKey = null;							// Key of the input file in the S3 Storage
     String doneTaskQueueURL = null;
     String messageReceiptHandle = null;
+    int pdfWorkerRatio = 0;								// Ratio of PDFs per worker
     
     
     /**	**************************	Go over 'newTaskQueue'  ************************** */
@@ -52,29 +53,39 @@ public class newTasksThread implements Runnable {
 	            
 	            if ((message.getBody().equals("newTask")) && (!globalVars.terminateSignal)){				// Received a "newTask" message from local application (while not signaled to terminate)
 	            	for (Entry<String, MessageAttributeValue> entry : message.getMessageAttributes().entrySet()) {
-	            		if (entry.getKey().equals("inputFileBucket")){							// Get the input file bucket location
+	            		if (entry.getKey().equals("inputFileBucket")){								// Get the input file bucket location
 	            			inputFileBucket = entry.getValue().getStringValue();
 	            			System.out.println(inputFileBucket);
 	            		}
-	            		else if (entry.getKey().equals("inputFileKey")){						// Get the input file key
+	            		else if (entry.getKey().equals("inputFileKey")){							// Get the input file key
 	            			inputFileKey = entry.getValue().getStringValue();
 	            			System.out.println(inputFileKey);
 	            		}
 	            		else if (entry.getKey().equals("taskDoneQueueUrl")){						// Get specific SQS queue to send 'doneTask' message
 	            			doneTaskQueueURL = entry.getValue().getStringValue();
 	            		}
+	            		else if (entry.getKey().equals("numOfPDFperWorker")){
+	            			pdfWorkerRatio = Integer.parseInt(entry.getValue().getStringValue());
+	            			if (pdfWorkerRatio > 0){
+	            				if (globalVars.numOfPDFperWorker == 0){								// Initialize if yet to be initialized
+	            					globalVars.numOfPDFperWorker = pdfWorkerRatio;
+	            				}
+	            				else if (pdfWorkerRatio < globalVars.numOfPDFperWorker){
+	            					globalVars.numOfPDFperWorker = pdfWorkerRatio;
+	            				}
+	            			}
+	            		}
 	                }
 	            	System.out.println("\nDownloading input file object from S3 storage...\n");
 	                S3Object inputFileObj = globalVars.s3.getObject(new GetObjectRequest(inputFileBucket, inputFileKey));
-	                System.out.println("Content-Type: "  + inputFileObj.getObjectMetadata().getContentType());
-	                System.out.println();
+	                //System.out.println("Content-Type: "  + inputFileObj.getObjectMetadata().getContentType());
+	                //System.out.println();
 	                
 	                
 	                globalVars.outputFilesMap.put(inputFileKey, new ArrayList<String>());								// Add output file lines list to Map
 	                int numOfTasks;
 					try {
 						numOfTasks = sendNewPDFTask(inputFileObj, globalVars.sqs, globalVars.newPDFTaskQueueURL, inputFileKey);
-						globalVars.numOfMessages += numOfTasks;																	// Increment 'newPDFTask' queue message counter
 		                globalVars.inputFilesMap.put(inputFileKey, new inputFile(inputFileBucket, inputFileKey, doneTaskQueueURL, numOfTasks));							// Insert input file data to Map by <inputFileKey, inputFile object>
 		                
 		                messageReceiptHandle = message.getReceiptHandle();
@@ -84,11 +95,9 @@ public class newTasksThread implements Runnable {
 		                if (globalVars.numOfMessages > 0){
 		                	if (globalVars.numOfWorkers == 0){					// Create a new worker to avoid dividing by zero
 		                		createWorker(globalVars.ec2, globalVars.numOfWorkers);
-		                		globalVars.numOfWorkers++;
 		                	}
 		                    while ((globalVars.numOfMessages / globalVars.numOfWorkers) > globalVars.numOfPDFperWorker){
 		                    	createWorker(globalVars.ec2, globalVars.numOfWorkers);
-		                    	globalVars.numOfWorkers++;
 		                    }
 		                }
 		                
@@ -96,8 +105,6 @@ public class newTasksThread implements Runnable {
 					catch (IOException e) {
 						e.printStackTrace();
 					}		 
-	                SendMessageRequest send_msg_request1 = new SendMessageRequest().withQueueUrl(globalVars.newTaskQueueURL).withMessageBody("Terminate");
-	                globalVars.sqs.sendMessage(send_msg_request1);
 	            	continue;
 	            }
 	            
@@ -146,6 +153,7 @@ public class newTasksThread implements Runnable {
 	        send_msg_request.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").withStringValue(operation));
 	        send_msg_request.addMessageAttributesEntry("PDF_URL", new MessageAttributeValue().withDataType("String").withStringValue(pdfURL));
 			sqs.sendMessage(send_msg_request);
+			globalVars.numOfMessages++;
 			numOfMessages++;
 	    }
 	    return numOfMessages;								// Return number of messages sent (number of tasks generated from input file)
@@ -173,7 +181,6 @@ public class newTasksThread implements Runnable {
 			try {
 				encodedUserData = new String( Base64.encodeBase64( userData.getBytes( "UTF-8" )), "UTF-8" );
 			} catch (UnsupportedEncodingException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 			request.setUserData( encodedUserData );
@@ -182,10 +189,9 @@ public class newTasksThread implements Runnable {
 			String instanceId = instances.get(0).getInstanceId();
 			
 			CreateTagsRequest tagRequest = new CreateTagsRequest();
-			//tagRequest = tagRequest.withResources(instanceId).withTags(new Tag("Worker", Integer.toString(numOfWorkers)));		// Set tag of a worker and a number value
 			tagRequest = tagRequest.withResources(instanceId).withTags(new Tag("Worker", "1"));
 			ec2.createTags(tagRequest);
-			  
+			globalVars.numOfWorkers++;								// Increment number of active Worker instances
 			System.out.println("Launch instances: " + instances);
 		} 
         catch (AmazonServiceException ase) {

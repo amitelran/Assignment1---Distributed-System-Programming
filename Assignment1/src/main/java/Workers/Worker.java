@@ -156,7 +156,6 @@ public class Worker {
     		}
     		else{
     			newFileURL = "<" + e.getMessage() + ">";
-    			System.err.println("Error: " + e.getMessage() + "\n");
     		}
     		if (pdfFile != null){
         		pdfFile.close();
@@ -179,7 +178,6 @@ public class Worker {
     		}
     		catch (Exception e){
     			newFileURL = "<" + e.getMessage() + ">";
-	    		System.err.println("Error: " + e.getMessage() + "\n");
 	    		if (pdfFile != null){
 	        		pdfFile.close();
 	        	}
@@ -206,7 +204,6 @@ public class Worker {
 	    	}
 	    	catch (Exception e){
 	    		newFileURL = "<" + e.getMessage() + ">";
-	    		System.err.println("Error: " + e.getMessage() + "\n");
 	    		if (pdfFile != null){
 	        		pdfFile.close();
 	        	}
@@ -234,7 +231,6 @@ public class Worker {
 	    	}
 	    	catch (Exception e){
 	    		newFileURL = "<" + e.getMessage() + ">";
-	    		System.err.println("Error: " + e.getMessage() + "\n");
 	    		if (pdfFile != null){
 	        		pdfFile.close();
 	        	}
