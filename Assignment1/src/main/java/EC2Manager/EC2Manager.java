@@ -156,13 +156,23 @@ public class EC2Manager {
         
         
         /*	************** Loop until termination message from local application **************	*/
-        /*
+        
         SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(globalVars.newTaskQueueURL).withMessageBody("newTask");
-        send_msg_request.addMessageAttributesEntry("inputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue("akiajfcl5i5zf7r65vla.assignment1"));
-        send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("sampleInput.txt"));
-        send_msg_request.addMessageAttributesEntry("taskDoneQueueUrl", new MessageAttributeValue().withDataType("String").withStringValue("https://sqs.us-east-1.amazonaws.com/668449302465/doneTaskQueue_blablablabla"));
+        //send_msg_request.addMessageAttributesEntry("inputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue("akiajfcl5i5zf7r65vla.assignment1"));
+        send_msg_request.addMessageAttributesEntry("inputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue("inputbucketamitelran"));
+        send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("input.txt"));
+        send_msg_request.addMessageAttributesEntry("taskDoneQueueUrl", new MessageAttributeValue().withDataType("String").withStringValue("https://sqs.us-east-1.amazonaws.com/213015949454/doneTaskQueue"));
+        send_msg_request.addMessageAttributesEntry("numOfPDFperWorker", new MessageAttributeValue().withDataType("String").withStringValue("10"));
         globalVars.sqs.sendMessage(send_msg_request);
-       */
+        
+        SendMessageRequest send_msg_request2 = new SendMessageRequest().withQueueUrl(globalVars.newTaskQueueURL).withMessageBody("newTask");
+        //send_msg_request.addMessageAttributesEntry("inputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue("akiajfcl5i5zf7r65vla.assignment1"));
+        send_msg_request2.addMessageAttributesEntry("inputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue("inputbucketamitelran"));
+        send_msg_request2.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("inputBGU.txt"));
+        send_msg_request2.addMessageAttributesEntry("taskDoneQueueUrl", new MessageAttributeValue().withDataType("String").withStringValue("https://sqs.us-east-1.amazonaws.com/213015949454/doneTaskQueue"));
+        send_msg_request2.addMessageAttributesEntry("numOfPDFperWorker", new MessageAttributeValue().withDataType("String").withStringValue("5"));
+        globalVars.sqs.sendMessage(send_msg_request2);
+       
         while(true){
         	
         	/* ************** If terminated by Local App & All Workers finished their tasks **************
@@ -332,7 +342,6 @@ public class EC2Manager {
     	/* *** Upload summary file to the Manager's S3 output bucket *** */
     	
     	System.out.println("Uploading summary file to S3 storage...\n");
-        //String key = outputFile.getName().replace('\\', '_').replace('/','_').replace(':', '_');
     	String key = summaryFile.getName();
     	System.out.println("Output File Name: " + key);
         PutObjectRequest req = new PutObjectRequest(bucket, key, summaryFile);

@@ -147,12 +147,11 @@ public class Worker {
     		outputFileKey = items[items.length - 1];									// Get PDF file name
     		int index = outputFileKey.lastIndexOf(".");
     		outputFileKey = outputFileKey.substring(0, index);							// Get PDF URL and rid of file suffix
-    		pdfFile = getPDF(pdfURL, outputFileKey);
+    		pdfFile = getPDF(pdfURL, outputFileKey);									// Get pdf file from URL
     	}
     	catch (Exception e){
     		if (e.getMessage().equals(pdfURL)){
     			newFileURL = "<Error 404: Web page not found>";
-    			System.err.println("Error 404: Web page not found\n");
     		}
     		else{
     			newFileURL = "<" + e.getMessage() + ">";
@@ -246,7 +245,7 @@ public class Worker {
     	if (outputFileKey != null){
     		PutObjectRequest req = new PutObjectRequest(bucketName, outputFileKey, outputFile);
             s3.putObject(req);
-            s3.setObjectAcl(bucketName, outputFileKey, CannedAccessControlList.PublicRead);
+            s3.setObjectAcl(bucketName, outputFileKey, CannedAccessControlList.PublicRead);			// Set output file as public
             URL outputFileURL = s3.getUrl(bucketName, outputFileKey);
             newFileURL = outputFileURL.toString();
     	}

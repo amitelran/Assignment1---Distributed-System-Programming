@@ -34,6 +34,7 @@ public class newTasksThread implements Runnable {
     String doneTaskQueueURL = null;
     String messageReceiptHandle = null;
     int pdfWorkerRatio = 0;								// Ratio of PDFs per worker
+    int numOfTasks = 0;									// Counter of input file number of tasks
     
     
     /**	**************************	Go over 'newTaskQueue'  ************************** */
@@ -83,7 +84,6 @@ public class newTasksThread implements Runnable {
 	                
 	                
 	                globalVars.outputFilesMap.put(inputFileKey, new ArrayList<String>());								// Add output file lines list to Map
-	                int numOfTasks;
 					try {
 						numOfTasks = sendNewPDFTask(inputFileObj, globalVars.sqs, globalVars.newPDFTaskQueueURL, inputFileKey);
 		                globalVars.inputFilesMap.put(inputFileKey, new inputFile(inputFileBucket, inputFileKey, doneTaskQueueURL, numOfTasks));							// Insert input file data to Map by <inputFileKey, inputFile object>
@@ -96,9 +96,11 @@ public class newTasksThread implements Runnable {
 		                	if (globalVars.numOfWorkers == 0){					// Create a new worker to avoid dividing by zero
 		                		createWorker(globalVars.ec2, globalVars.numOfWorkers);
 		                	}
-		                    while ((globalVars.numOfMessages / globalVars.numOfWorkers) > globalVars.numOfPDFperWorker){
-		                    	createWorker(globalVars.ec2, globalVars.numOfWorkers);
-		                    }
+		                	if (globalVars.numOfWorkers > 0){
+		                		while ((globalVars.numOfMessages / globalVars.numOfWorkers) > globalVars.numOfPDFperWorker){
+			                    	createWorker(globalVars.ec2, globalVars.numOfWorkers);
+			                    }
+		                	}
 		                }
 		                
 					} 
