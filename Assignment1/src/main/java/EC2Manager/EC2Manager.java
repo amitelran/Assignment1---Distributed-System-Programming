@@ -84,27 +84,10 @@ public class EC2Manager {
         String outputBucketName = "outputmanagerbucketamityoav";
         Map<String, String> queueAttributes = new HashMap<String, String>();
        
-       
-		
-        /*	************** Get 'n' stating number of messages per worker ************** */	
-        /*
-        if ((args.length < 1) || (Integer.parseInt(args[0]) < 1)){					
-        	System.out.println("Integer stating how many PDFs per Worker has not been provided by Local Application");
-        	return;
-        }
-        else{
-        	try{
-        		globalVars.numOfPDFperWorker = Integer.parseInt(args[0]);
-            	System.out.println("Number of messages per Worker set to be: " + globalVars.numOfPDFperWorker + "\n");
-        	}
-        	catch(Exception e){
-        		System.out.println("Error: " + e.getMessage());
-        		return;
-        	}   	
-        }
-        */
-        /*	************** Get 'newTask|Termination' Local Application <--> Manager SQS queue, and check if Manager <--> Workers queues exist ************** */	
         
+        
+        /*	************** Check for 'newPDFTask|WorkerTermination' and 'donePDFTask' Manager <--> Workers SQS queues existence ************** */	
+
         
         for (String queueUrl : globalVars.sqs.listQueues().getQueueUrls()) {
         	URI uri = new URI(queueUrl);
@@ -229,7 +212,7 @@ public class EC2Manager {
             		// Ensure input file corresponding key in maps are initialized
             		if ((globalVars.inputFilesMap.containsKey(inputFileKey)) && (globalVars.outputFilesMap.containsKey(inputFileKey))){
 	            		globalVars.numOfMessages--;																		// Decrement number of 'online' uncompleted tasks
-	            		System.out.println(globalVars.numOfMessages);
+	            		System.out.println("Number of messages: " + globalVars.numOfMessages);
 	            		String line = operation + "\t" + inputFileBucket + "\t" + newFileURL;
 	            		globalVars.outputFilesMap.get(inputFileKey).add(line);											// Add completed task line to the List<String> of output file lines
 	            		globalVars.inputFilesMap.get(inputFileKey).incCompletedTasks();									// Increment no. of completed tasks for given input file identifier

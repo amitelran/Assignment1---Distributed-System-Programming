@@ -150,16 +150,22 @@ public class Worker {
     		pdfFile = getPDF(pdfURL, outputFileKey);									// Get pdf file from URL
     	}
     	catch (Exception e){
-    		if (e.getMessage().equals(pdfURL)){
-    			newFileURL = "<Error 404: Web page not found>";
+    		try {
+    			String httpsURL = pdfURL.replace("http", "https");						// If caught an exception, try replacing http with https
+    			pdfFile = getPDF(httpsURL, outputFileKey);								// Get pdf file from URL
     		}
-    		else{
-    			newFileURL = "<" + e.getMessage() + ">";
+    		catch (Exception exc) {
+    			if (exc.getMessage().equals(pdfURL)){
+        			newFileURL = "<Error 404: Web page not found>";
+        		}
+        		else{
+        			newFileURL = "<" + exc.getMessage() + ">";
+        		}
+        		if (pdfFile != null){
+            		pdfFile.close();
+            	}
+        		return newFileURL;
     		}
-    		if (pdfFile != null){
-        		pdfFile.close();
-        	}
-    		return newFileURL;
     	}
     		
     	/*	*** Perform "ToImage" over PDF - convert the first page of the PDF file to a "png" image *** */
