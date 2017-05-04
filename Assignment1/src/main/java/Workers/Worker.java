@@ -119,10 +119,15 @@ public class Worker {
                 			pdfURL = entry.getValue().getStringValue();
                 		}
                     }
-                	newFileURL = handleTask(s3, outputBucketName, inputFileKey, operation, pdfURL);
-                	sendDonePDFTask(sqs, donePDFTaskQueueURL, pdfURL, operation, newFileURL, inputFileKey);		// Send 'Done PDF Task' message to Manager <--> Workers queue
-                	String messageReceiptHandle = message.getReceiptHandle();
-                    sqs.deleteMessage(new DeleteMessageRequest(newPDFTaskQueueURL, messageReceiptHandle));		// Delete 'newPDFTask' message from 'newTaskQueue'
+                	try {
+                		newFileURL = handleTask(s3, outputBucketName, inputFileKey, operation, pdfURL);
+                    	sendDonePDFTask(sqs, donePDFTaskQueueURL, pdfURL, operation, newFileURL, inputFileKey);		// Send 'Done PDF Task' message to Manager <--> Workers queue
+                    	String messageReceiptHandle = message.getReceiptHandle();
+                        sqs.deleteMessage(new DeleteMessageRequest(newPDFTaskQueueURL, messageReceiptHandle));		// Delete 'newPDFTask' message from 'newTaskQueue'
+                	}
+                	catch (Exception e){
+                		System.out.println("Handle Task exception: " + e.getMessage() + "\n");
+                	}
                 	continue;
                 }
             }

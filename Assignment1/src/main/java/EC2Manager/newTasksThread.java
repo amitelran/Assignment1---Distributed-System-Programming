@@ -90,19 +90,24 @@ public class newTasksThread implements Runnable {
 		                
 		                // Stabilize ratio of <worker per 'n' number of messages> by creating new workers (not terminating running workers)
 		                if (globalVars.numOfMessages > 0){
-		                	if (globalVars.numOfWorkers == 0){					// Create a new worker to avoid dividing by zero
-		                		createWorker(globalVars.ec2, globalVars.numOfWorkers);
+		                	try{
+		                		if (globalVars.numOfWorkers == 0){					// Create a new worker to avoid dividing by zero
+			                		createWorker(globalVars.ec2, globalVars.numOfWorkers);
+			                	}
+			                	if (globalVars.numOfWorkers > 0){
+			                		while ((globalVars.numOfMessages / globalVars.numOfWorkers) > globalVars.numOfPDFperWorker){
+				                    	createWorker(globalVars.ec2, globalVars.numOfWorkers);
+				                    }
+			                	}
 		                	}
-		                	if (globalVars.numOfWorkers > 0){
-		                		while ((globalVars.numOfMessages / globalVars.numOfWorkers) > globalVars.numOfPDFperWorker){
-			                    	createWorker(globalVars.ec2, globalVars.numOfWorkers);
-			                    }
+		                	catch (Exception e){
+		                		System.out.println("Creating new Worker instances exception: " + e.getMessage() + "\n");
 		                	}
 		                }
 		                
 					} 
 					catch (IOException e) {
-						e.printStackTrace();
+                		System.out.println("Manager dispatching new task exception: " + e.getMessage() + "\n");
 					}		 
 	            	continue;
 	            }
@@ -117,8 +122,13 @@ public class newTasksThread implements Runnable {
 	            
 	            if (message.getBody().equals("Terminate")){											// Received a termination message from local application
 	            	globalVars.terminateSignal = true;												// Set 'terminateSignal' flag 'on'
-	            	messageReceiptHandle = message.getReceiptHandle();
-	            	globalVars.sqs.deleteMessage(new DeleteMessageRequest(globalVars.newTaskQueueURL, messageReceiptHandle));		// Delete 'Terminate' message from 'newTaskQueue'
+	            	try{
+	            		messageReceiptHandle = message.getReceiptHandle();
+		            	globalVars.sqs.deleteMessage(new DeleteMessageRequest(globalVars.newTaskQueueURL, messageReceiptHandle));		// Delete 'Terminate' message from 'newTaskQueue'
+	            	}
+	            	catch (Exception e){
+	            		System.out.println("Terminate message delete exception: " + e.getMessage() + "\n");
+	            	}
 	            	return;
 	            }
 	        }
