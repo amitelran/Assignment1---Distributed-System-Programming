@@ -226,8 +226,9 @@ public class EC2Manager {
 	private static void sendDoneTask(AmazonS3 s3, AmazonSQS sqs, String doneTaskQueueURL, String inputFileKey, String outputBucketName, Map<String, List<String>> outputFilesMap) throws IOException{
 		String outputFileURL = generateSummaryFile(s3, outputFilesMap.get(inputFileKey), outputBucketName, inputFileKey);
 		SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(doneTaskQueueURL).withMessageBody("taskDone");
-        send_msg_request.addMessageAttributesEntry("outputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue(outputFileURL));
+        send_msg_request.addMessageAttributesEntry("outputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue(outputBucketName));
         send_msg_request.addMessageAttributesEntry("outputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("outputFileFor" + inputFileKey));
+        send_msg_request.addMessageAttributesEntry("outputFileURL", new MessageAttributeValue().withDataType("String").withStringValue(outputFileURL));
 		sqs.sendMessage(send_msg_request);
 	}
 	
