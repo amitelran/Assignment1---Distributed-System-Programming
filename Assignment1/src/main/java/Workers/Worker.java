@@ -68,6 +68,7 @@ public class Worker {
         String outputBucketName = "outputworkersbucketamityoav";
         
         
+        
         /*	************** Get 'newPDFTask|WorkerTermination' and 'donePDFTask' Manager <--> Workers SQS queues ************** */	
         
         

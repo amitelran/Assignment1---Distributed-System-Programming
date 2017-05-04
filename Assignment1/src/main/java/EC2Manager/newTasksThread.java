@@ -79,9 +79,6 @@ public class newTasksThread implements Runnable {
 	                }
 	            	System.out.println("\nDownloading input file object from S3 storage...\n");
 	                S3Object inputFileObj = globalVars.s3.getObject(new GetObjectRequest(inputFileBucket, inputFileKey));
-	                //System.out.println("Content-Type: "  + inputFileObj.getObjectMetadata().getContentType());
-	                //System.out.println();
-	                
 	                
 	                globalVars.outputFilesMap.put(inputFileKey, new ArrayList<String>());								// Add output file lines list to Map
 					try {
