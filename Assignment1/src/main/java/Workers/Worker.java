@@ -5,12 +5,14 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map.Entry;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.util.ImageIOUtil;
@@ -32,6 +34,8 @@ import com.amazonaws.services.sqs.model.MessageAttributeValue;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 import com.sun.org.apache.xml.internal.utils.URI;
+
+import sun.net.www.protocol.http.HttpURLConnection;
 
 
 /**	**************************  Worker Flow  **************************
@@ -90,47 +94,52 @@ public class Worker {
         
         
         while(true){
-        	
-            ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(newPDFTaskQueueURL).withMessageAttributeNames("All");
-            List<Message> messages = sqs.receiveMessage(receiveMessageRequest).getMessages();
-            for (Message message : messages) {
-                printMessage(message);
-            	
-            	/*	************** Received a "newPDFTask" message from Manager **************
-                 *  - Download the PDF file indicated in the message.
-                 *  - Perform the operation requested on the file.
-                 *  - Upload the resulting output file to S3.
-                 *  - Put a message in the 'donePDFTaskQueue' indicating:
-                 *  	 -- the original URL of the PDF
-                 *  	 -- the S3 url of the new image file, and the operation that was performed.
-                 *  	 -- remove the processed message from the SQS queue.
-              	*/
-            	
-            	
-                if (message.getBody().equals("newPDFTask")){							// Received a "newPDFTask" message from Manager instance
-                	for (Entry<String, MessageAttributeValue> entry : message.getMessageAttributes().entrySet()) {
-                		if (entry.getKey().equals("inputFileKey")){						// Get the input file key
-                			inputFileKey = entry.getValue().getStringValue();
-                		}
-                		else if (entry.getKey().equals("Operation")){					// Get the operation to perform on the PDF
-                			operation = entry.getValue().getStringValue();
-                		}
-                		else if (entry.getKey().equals("PDF_URL")){						// Get the PDF's URL
-                			pdfURL = entry.getValue().getStringValue();
-                		}
+        	try{
+        		ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(newPDFTaskQueueURL).withMessageAttributeNames("All");
+                List<Message> messages = sqs.receiveMessage(receiveMessageRequest).getMessages();
+                for (Message message : messages) {
+                    printMessage(message);
+                	
+                	/*	************** Received a "newPDFTask" message from Manager **************
+                     *  - Download the PDF file indicated in the message.
+                     *  - Perform the operation requested on the file.
+                     *  - Upload the resulting output file to S3.
+                     *  - Put a message in the 'donePDFTaskQueue' indicating:
+                     *  	 -- the original URL of the PDF
+                     *  	 -- the S3 url of the new image file, and the operation that was performed.
+                     *  	 -- remove the processed message from the SQS queue.
+                  	*/
+                	
+                	
+                    if (message.getBody().equals("newPDFTask")){							// Received a "newPDFTask" message from Manager instance
+                    	for (Entry<String, MessageAttributeValue> entry : message.getMessageAttributes().entrySet()) {
+                    		if (entry.getKey().equals("inputFileKey")){						// Get the input file key
+                    			inputFileKey = entry.getValue().getStringValue();
+                    		}
+                    		else if (entry.getKey().equals("Operation")){					// Get the operation to perform on the PDF
+                    			operation = entry.getValue().getStringValue();
+                    		}
+                    		else if (entry.getKey().equals("PDF_URL")){						// Get the PDF's URL
+                    			pdfURL = entry.getValue().getStringValue();
+                    		}
+                        }
+                    	try {
+                    		newFileURL = handleTask(s3, outputBucketName, inputFileKey, operation, pdfURL);
+                        	sendDonePDFTask(sqs, donePDFTaskQueueURL, pdfURL, operation, newFileURL, inputFileKey);		// Send 'Done PDF Task' message to Manager <--> Workers queue
+                        	String messageReceiptHandle = message.getReceiptHandle();
+                            sqs.deleteMessage(new DeleteMessageRequest(newPDFTaskQueueURL, messageReceiptHandle));		// Delete 'newPDFTask' message from 'newTaskQueue'
+                    	}
+                    	catch (Exception e){
+                    		System.out.println("Handle Task exception: " + e.getMessage() + "\n");
+                    	}
+                    	continue;
                     }
-                	try {
-                		newFileURL = handleTask(s3, outputBucketName, inputFileKey, operation, pdfURL);
-                    	sendDonePDFTask(sqs, donePDFTaskQueueURL, pdfURL, operation, newFileURL, inputFileKey);		// Send 'Done PDF Task' message to Manager <--> Workers queue
-                    	String messageReceiptHandle = message.getReceiptHandle();
-                        sqs.deleteMessage(new DeleteMessageRequest(newPDFTaskQueueURL, messageReceiptHandle));		// Delete 'newPDFTask' message from 'newTaskQueue'
-                	}
-                	catch (Exception e){
-                		System.out.println("Handle Task exception: " + e.getMessage() + "\n");
-                	}
-                	continue;
                 }
-            }
+        	
+        	}
+        	catch (Exception e){
+        		System.err.println("Error in Worker: " + e.getMessage() + "\n");
+        	}
         }
 	}
 
@@ -154,11 +163,17 @@ public class Worker {
     		int index = outputFileKey.lastIndexOf(".");
     		outputFileKey = outputFileKey.substring(0, index);							// Get PDF URL and rid of file suffix
     		pdfFile = getPDF(pdfURL, outputFileKey);									// Get pdf file from URL
+    		if (pdfFile == null){
+    			return "<Error occured while trying to get PDF file>";
+    		}
     	}
     	catch (Exception e){
     		try {
     			String httpsURL = pdfURL.replace("http", "https");						// If caught an exception, try replacing http with https
     			pdfFile = getPDF(httpsURL, outputFileKey);								// Get pdf file from URL
+    			if (pdfFile == null){
+        			return "<Error occured while trying to get PDF file>";
+        		}
     		}
     		catch (Exception exc) {
     			if (exc.getMessage().equals(pdfURL)){
@@ -274,10 +289,24 @@ public class Worker {
     
     
     private static PDDocument getPDF(String pdfURL, String outputFileKey) throws MalformedURLException, IOException{
-    	URL url = new URL(pdfURL);
-    	File inputPDFFile = new File(outputFileKey + ".pdf");
-		FileUtils.copyURLToFile(url, inputPDFFile);									// Copy URL to file
-    	return PDDocument.loadNonSeq(inputPDFFile, null);							// Parse PDF with non sequential parser (checks valid objects and parse only these objects)
+    	try {
+    		URL url = new URL(pdfURL);
+    		File inputPDFFile = new File(outputFileKey + ".pdf");
+    		HttpURLConnection.setFollowRedirects(false);
+    		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+    		connection.addRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 5.1; rv:19.0) Gecko/20100101 Firefox/19.0");
+    		connection.setRequestMethod("HEAD");
+    		if (connection.getResponseCode() == HttpURLConnection.HTTP_OK){
+    			InputStream inpStream = url.openStream();
+    			Files.copy(inpStream, java.nio.file.Paths.get(outputFileKey + ".pdf"), StandardCopyOption.REPLACE_EXISTING);
+    			inpStream.close();
+    			return PDDocument.loadNonSeq(inputPDFFile, null);
+    		}
+    	}
+    	catch (Exception e){
+    		System.err.println("Error in downloading PDF document: " + e.getMessage() + "\n");
+    	}
+    	return null;
     }
     
     
