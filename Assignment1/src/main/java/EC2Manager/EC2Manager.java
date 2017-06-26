@@ -323,6 +323,7 @@ public class EC2Manager {
     	try{
     		//int index = inputFileKey.lastIndexOf(".");					// Get rid of file suffix
     		//summaryFile = new File("outputFileFor" + inputFileKey.substring(0, index) + ".txt");
+    		summaryFile = new File("outputFileFor" + inputFileKey);
 	    	FileWriter writer = new FileWriter(summaryFile);
 	    	BufferedWriter out = new BufferedWriter(writer);
 	    	for (int i = 0; i < outputFileLines.size(); i++) {
