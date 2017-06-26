@@ -8,8 +8,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map.Entry;
 
@@ -18,6 +16,8 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.util.ImageIOUtil;
 import org.apache.pdfbox.util.PDFText2HTML;
 import org.apache.pdfbox.util.PDFTextStripper;
+
+import org.apache.commons.io.FileUtils;
 
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
@@ -270,11 +270,16 @@ public class Worker {
     		pdfFile.close();
     	}
     	if (outputFileKey != null){
-    		PutObjectRequest req = new PutObjectRequest(bucketName, outputFileKey, outputFile);
-            s3.putObject(req);
-            s3.setObjectAcl(bucketName, outputFileKey, CannedAccessControlList.PublicRead);			// Set output file as public
-            URL outputFileURL = s3.getUrl(bucketName, outputFileKey);
-            newFileURL = outputFileURL.toString();
+    		try{
+    			PutObjectRequest req = new PutObjectRequest(bucketName, outputFileKey, outputFile);
+                s3.putObject(req);
+                s3.setObjectAcl(bucketName, outputFileKey, CannedAccessControlList.PublicRead);			// Set output file as public
+                URL outputFileURL = s3.getUrl(bucketName, outputFileKey);
+                newFileURL = outputFileURL.toString();
+    		}
+    		catch (Exception e){
+    			return "<" + e.getMessage() + ">";
+    		}
     	}
         System.out.println("New File URL: " + newFileURL + "\n");
         return newFileURL;
@@ -294,11 +299,13 @@ public class Worker {
     		File inputPDFFile = new File(outputFileKey + ".pdf");
     		HttpURLConnection.setFollowRedirects(false);
     		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+    		connection.setReadTimeout(30000);					// Set read timeout of 30 seconds
     		connection.addRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 5.1; rv:19.0) Gecko/20100101 Firefox/19.0");
     		connection.setRequestMethod("HEAD");
     		if (connection.getResponseCode() == HttpURLConnection.HTTP_OK){
     			InputStream inpStream = url.openStream();
-    			Files.copy(inpStream, java.nio.file.Paths.get(outputFileKey + ".pdf"), StandardCopyOption.REPLACE_EXISTING);
+    			//Files.copy(inpStream, java.nio.file.Paths.get(outputFileKey + ".pdf"), StandardCopyOption.REPLACE_EXISTING);
+    			FileUtils.copyInputStreamToFile(inpStream, inputPDFFile);
     			inpStream.close();
     			return PDDocument.loadNonSeq(inputPDFFile, null);
     		}
