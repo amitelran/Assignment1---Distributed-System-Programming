@@ -69,7 +69,7 @@ public class Worker {
         String pdfURL = null;								// Given PDF URL
         String newFileURL = null;							// URL of a new file (after operating over input file)
         String inputFileKey = null;							// The key (name) of the input file originating the PDF task
-        String outputBucketName = "outputworkersbucketamityoav";
+        String outputBucketName = "outputworkersbucketamityoav2";
         
         
         

@@ -80,7 +80,7 @@ public class EC2Manager {
         String newFileURL = null;							// URL of a new image file as given by Worker
         String operation = null;							// The operation performed by Worker for a given PDF URL
         String messageReceiptHandle = null;					// Message receipt handle, required when deleting queue messages
-        String outputBucketName = "outputmanagerbucketamityoav";
+        String outputBucketName = "outputmanagerbucketamityoav2";
         Map<String, String> queueAttributes = new HashMap<String, String>();
        
         
