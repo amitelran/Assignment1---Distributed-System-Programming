@@ -35,105 +35,114 @@ public class newTasksThread implements Runnable {
     String messageReceiptHandle = null;
     int pdfWorkerRatio = 0;								// Ratio of PDFs per worker
     int numOfTasks = 0;									// Counter of input file number of tasks
+    boolean checkWorkerCreation = false;				// Boolean to indicate creation of worker succeeded or failed
     
     
     /**	**************************	Go over 'newTaskQueue'  ************************** */
     
 	public void run() {
 		while(true){
-	        ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(globalVars.newTaskQueueURL).withMessageAttributeNames("All");
-	        List<Message> messages = globalVars.sqs.receiveMessage(receiveMessageRequest).getMessages();
-	        for (Message message : messages) {
-	        	EC2Manager.printMessage(message);
-	            
-	            /*	************** Received a "newTask" message from local application **************
-	             *  - Download file from S3 Storage
-	             *  - Count number of files lines (which is number of tasks for file), create worker per 'numOfPDFperWorker' integer
-	             *  - Process the input file lines and send each line as a 'newPDFTask' message to Workers queue
-	          	*/
-	            
-	            if ((message.getBody().equals("newTask")) && (!globalVars.terminateSignal)){				// Received a "newTask" message from local application (while not signaled to terminate)
-	            	for (Entry<String, MessageAttributeValue> entry : message.getMessageAttributes().entrySet()) {
-	            		if (entry.getKey().equals("inputFileBucket")){								// Get the input file bucket location
-	            			inputFileBucket = entry.getValue().getStringValue();
-	            			System.out.println(inputFileBucket);
-	            		}
-	            		else if (entry.getKey().equals("inputFileKey")){							// Get the input file key
-	            			inputFileKey = entry.getValue().getStringValue();
-	            			System.out.println(inputFileKey);
-	            		}
-	            		else if (entry.getKey().equals("taskDoneQueueUrl")){						// Get specific SQS queue to send 'doneTask' message
-	            			doneTaskQueueURL = entry.getValue().getStringValue();
-	            		}
-	            		else if (entry.getKey().equals("numOfPDFperWorker")){
-	            			pdfWorkerRatio = Integer.parseInt(entry.getValue().getStringValue());
-	            			if (pdfWorkerRatio > 0){
-	            				if (globalVars.numOfPDFperWorker == 0){								// Initialize if yet to be initialized
-	            					globalVars.numOfPDFperWorker = pdfWorkerRatio;
-	            				}
-	            				else if (pdfWorkerRatio < globalVars.numOfPDFperWorker){
-	            					globalVars.numOfPDFperWorker = pdfWorkerRatio;
-	            				}
-	            			}
-	            		}
-	                }
-	            	System.out.println("\nDownloading input file object from S3 storage...\n");
-	                S3Object inputFileObj = globalVars.s3.getObject(new GetObjectRequest(inputFileBucket, inputFileKey));
-	                
-	                globalVars.outputFilesMap.put(inputFileKey, new ArrayList<String>());								// Add output file lines list to Map
-					try {
-						numOfTasks = sendNewPDFTask(inputFileObj, globalVars.sqs, globalVars.newPDFTaskQueueURL, inputFileKey);
-		                globalVars.inputFilesMap.put(inputFileKey, new inputFile(inputFileBucket, inputFileKey, doneTaskQueueURL, numOfTasks));							// Insert input file data to Map by <inputFileKey, inputFile object>
-		                
-		                messageReceiptHandle = message.getReceiptHandle();
-		                globalVars.sqs.deleteMessage(new DeleteMessageRequest(globalVars.newTaskQueueURL, messageReceiptHandle));				// Delete 'newTask' message from 'newTaskQueue'
-		                
-		                // Stabilize ratio of <worker per 'n' number of messages> by creating new workers (not terminating running workers)
-		                if (globalVars.numOfMessages > 0){
-		                	try{
-		                		if (globalVars.numOfWorkers == 0){					// Create a new worker to avoid dividing by zero
-			                		createWorker(globalVars.ec2, globalVars.numOfWorkers);
-			                	}
-			                	if (globalVars.numOfWorkers > 0){
-			                		while ((globalVars.numOfMessages / globalVars.numOfWorkers) > globalVars.numOfPDFperWorker){
-				                    	createWorker(globalVars.ec2, globalVars.numOfWorkers);
-				                    }
-			                	}
-		                	}
-		                	catch (Exception e){
-		                		System.out.println("Creating new Worker instances exception: " + e.getMessage() + "\n");
-		                	}
+			try{
+				ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(globalVars.newTaskQueueURL).withMessageAttributeNames("All");
+		        List<Message> messages = globalVars.sqs.receiveMessage(receiveMessageRequest).getMessages();
+		        for (Message message : messages) {
+		        	EC2Manager.printMessage(message);
+		            
+		            /*	************** Received a "newTask" message from local application **************
+		             *  - Download file from S3 Storage
+		             *  - Count number of files lines (which is number of tasks for file), create worker per 'numOfPDFperWorker' integer
+		             *  - Process the input file lines and send each line as a 'newPDFTask' message to Workers queue
+		          	*/
+		            
+		            if ((message.getBody().equals("newTask")) && (!globalVars.terminateSignal)){				// Received a "newTask" message from local application (while not signaled to terminate)
+		            	for (Entry<String, MessageAttributeValue> entry : message.getMessageAttributes().entrySet()) {
+		            		if (entry.getKey().equals("inputFileBucket")){								// Get the input file bucket location
+		            			inputFileBucket = entry.getValue().getStringValue();
+		            			System.out.println(inputFileBucket);
+		            		}
+		            		else if (entry.getKey().equals("inputFileKey")){							// Get the input file key
+		            			inputFileKey = entry.getValue().getStringValue();
+		            			System.out.println(inputFileKey);
+		            		}
+		            		else if (entry.getKey().equals("taskDoneQueueUrl")){						// Get specific SQS queue to send 'doneTask' message
+		            			doneTaskQueueURL = entry.getValue().getStringValue();
+		            		}
+		            		else if (entry.getKey().equals("numOfPDFperWorker")){
+		            			pdfWorkerRatio = Integer.parseInt(entry.getValue().getStringValue());
+		            			if (pdfWorkerRatio > 0){
+		            				if (globalVars.numOfPDFperWorker == 0){								// Initialize if yet to be initialized
+		            					globalVars.numOfPDFperWorker = pdfWorkerRatio;
+		            				}
+		            				else if (pdfWorkerRatio < globalVars.numOfPDFperWorker){
+		            					globalVars.numOfPDFperWorker = pdfWorkerRatio;
+		            				}
+		            			}
+		            		}
 		                }
-		                
-					} 
-					catch (IOException e) {
-                		System.out.println("Manager dispatching new task exception: " + e.getMessage() + "\n");
-					}		 
-	            	continue;
-	            }
-	            
-	            
-	            /*	************** Received a "Terminate" message from local application **************
-	             *	- Set 'terminateSignal' boolean flag on
-	             *	- Delete message from queue
-	             *	- Finish running (don't get more input messages from local applicationa)
-	             */
-	            
-	            
-	            if (message.getBody().equals("Terminate")){											// Received a termination message from local application
-	            	globalVars.terminateSignal = true;												// Set 'terminateSignal' flag 'on'
-	            	try{
-	            		messageReceiptHandle = message.getReceiptHandle();
-		            	globalVars.sqs.deleteMessage(new DeleteMessageRequest(globalVars.newTaskQueueURL, messageReceiptHandle));		// Delete 'Terminate' message from 'newTaskQueue'
-	            	}
-	            	catch (Exception e){
-	            		System.out.println("Terminate message delete exception: " + e.getMessage() + "\n");
-	            	}
-	            	return;
-	            }
+		            	
+		                globalVars.outputFilesMap.put(inputFileKey, new ArrayList<String>());								// Add output file lines list to Map
+						try {
+							System.out.println("\nDownloading input file object from S3 storage...\n");
+			                S3Object inputFileObj = globalVars.s3.getObject(new GetObjectRequest(inputFileBucket, inputFileKey));
+			                
+							numOfTasks = sendNewPDFTask(inputFileObj, globalVars.sqs, globalVars.newPDFTaskQueueURL, inputFileKey);
+			                globalVars.inputFilesMap.put(inputFileKey, new inputFile(inputFileBucket, inputFileKey, doneTaskQueueURL, numOfTasks));							// Insert input file data to Map by <inputFileKey, inputFile object>
+			                
+			                messageReceiptHandle = message.getReceiptHandle();
+			                globalVars.sqs.deleteMessage(new DeleteMessageRequest(globalVars.newTaskQueueURL, messageReceiptHandle));				// Delete 'newTask' message from 'newTaskQueue'
+			                
+			                // Stabilize ratio of <worker per 'n' number of messages> by creating new workers (not terminating running workers)
+			                if (globalVars.numOfMessages > 0){
+			                	try{
+			                		if (globalVars.numOfWorkers == 0){					// Create a new worker to avoid dividing by zero
+			                			checkWorkerCreation = createWorker(globalVars.ec2, globalVars.numOfWorkers);
+				                	}
+				                	if (globalVars.numOfWorkers > 0){
+				                		while ((globalVars.numOfMessages / globalVars.numOfWorkers) > globalVars.numOfPDFperWorker){
+				                			checkWorkerCreation = createWorker(globalVars.ec2, globalVars.numOfWorkers);
+				                			if (!checkWorkerCreation) {						// Continue if didn't manage to create worker
+				                				break;
+				                			}
+					                    }
+				                	}
+			                	}
+			                	catch (Exception e){
+			                		System.out.println("Creating new Worker instances exception: " + e.getMessage() + "\n");
+			                	}
+			                }
+			                
+						} 
+						catch (IOException e) {
+	                		System.out.println("Manager dispatching new task exception: " + e.getMessage() + "\n");
+						}		 
+		            	continue;
+		            }
+		            
+		            
+		            /*	************** Received a "Terminate" message from local application **************
+		             *	- Set 'terminateSignal' boolean flag on
+		             *	- Delete message from queue
+		             *	- Finish running (don't get more input messages from local applicationa)
+		             */
+		            
+		            
+		            if (message.getBody().equals("Terminate")){											// Received a termination message from local application
+		            	globalVars.terminateSignal = true;												// Set 'terminateSignal' flag 'on'
+		            	try{
+		            		messageReceiptHandle = message.getReceiptHandle();
+			            	globalVars.sqs.deleteMessage(new DeleteMessageRequest(globalVars.newTaskQueueURL, messageReceiptHandle));		// Delete 'Terminate' message from 'newTaskQueue'
+		            	}
+		            	catch (Exception e){
+		            		System.out.println("Terminate message delete exception: " + e.getMessage() + "\n");
+		            	}
+		            	return;
+		            }
+		        }
+			}
+	        catch (Exception e){
+	        	System.err.println("Error occured in newTasksThread: " + e.getMessage() + "\n");
 	        }
 		}
-		
 	}
         
     
@@ -147,23 +156,28 @@ public class newTasksThread implements Runnable {
 		int numOfMessages = 0;
 		BufferedReader reader = new BufferedReader(new InputStreamReader(inputFileObj.getObjectContent()));		// Read content of input file object
 	    while (true) {										// Read each file line, generate PDF task message to 'newPDFTaskQueue' Manager|Workers queue
-	        String line = reader.readLine();				
-	        if (line == null){
-	        	break;
+	        try{
+	        	String line = reader.readLine();				
+		        if (line == null){
+		        	break;
+		        }
+		        String operation = line.split("\\t")[0];		// Get operation to perform
+		        String pdfURL = line.split("\\t")[1];			// Get PDF URL
+		        System.out.println("Operation:    " + operation);
+		        System.out.println("PDF URL:    " + pdfURL);
+		        
+		        // Send 'newPDFTask' message to queue, including attributes: input file name, operation to perform, PDF URL
+		        SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(newPDFTaskQueueURL).withMessageBody("newPDFTask");
+		        send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue(fileKey));
+		        send_msg_request.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").withStringValue(operation));
+		        send_msg_request.addMessageAttributesEntry("PDF_URL", new MessageAttributeValue().withDataType("String").withStringValue(pdfURL));
+				sqs.sendMessage(send_msg_request);
+				globalVars.numOfMessages++;
+				numOfMessages++;
 	        }
-	        String operation = line.split("\\t")[0];		// Get operation to perform
-	        String pdfURL = line.split("\\t")[1];			// Get PDF URL
-	        System.out.println("Operation:    " + operation);
-	        System.out.println("PDF URL:    " + pdfURL);
-	        
-	        // Send 'newPDFTask' message to queue, including attributes: input file name, operation to perform, PDF URL
-	        SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(newPDFTaskQueueURL).withMessageBody("newPDFTask");
-	        send_msg_request.addMessageAttributesEntry("inputFileKey", new MessageAttributeValue().withDataType("String").withStringValue(fileKey));
-	        send_msg_request.addMessageAttributesEntry("Operation", new MessageAttributeValue().withDataType("String").withStringValue(operation));
-	        send_msg_request.addMessageAttributesEntry("PDF_URL", new MessageAttributeValue().withDataType("String").withStringValue(pdfURL));
-			sqs.sendMessage(send_msg_request);
-			globalVars.numOfMessages++;
-			numOfMessages++;
+	    	catch(Exception e){
+	    		System.err.println("Error occured in sendNewPDFTask: " + e.getMessage() + "\n");
+	    	}
 	    }
 	    return numOfMessages;								// Return number of messages sent (number of tasks generated from input file)
 	}
@@ -173,7 +187,7 @@ public class newTasksThread implements Runnable {
     /**	************** Create Worker instances **************	**/
     
 	
-    private static void createWorker(AmazonEC2 ec2, int numOfWorkers){
+    private static boolean createWorker(AmazonEC2 ec2, int numOfWorkers){
         try {
 			System.out.println("Creating Worker instance...");
 			RunInstancesRequest request = new RunInstancesRequest("ami-51792c38", 1, 1);
@@ -202,12 +216,14 @@ public class newTasksThread implements Runnable {
 			ec2.createTags(tagRequest);
 			globalVars.numOfWorkers++;								// Increment number of active Worker instances
 			System.out.println("Launch instances: " + instances);
+			return true;
 		} 
         catch (AmazonServiceException ase) {
 	        System.out.println("Caught Exception: " + ase.getMessage());
 	        System.out.println("Reponse Status Code: " + ase.getStatusCode());
 	        System.out.println("Error Code: " + ase.getErrorCode());
 	        System.out.println("Request ID: " + ase.getRequestId());
+	        return false;
         }
     }  
 }
