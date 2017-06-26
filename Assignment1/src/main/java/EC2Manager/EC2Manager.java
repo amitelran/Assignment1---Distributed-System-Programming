@@ -288,7 +288,9 @@ public class EC2Manager {
     	try{
     		List<String> instanceIds = new ArrayList<String>();
         	DescribeInstancesRequest listingRequest = new DescribeInstancesRequest();
-        	Filter filter1 = new Filter("tag:Manager");
+        	List<String> valuesT1 = new ArrayList<String>();
+        	valuesT1.add("1");
+        	Filter filter1 = new Filter("tag:Manager", valuesT1);
         	DescribeInstancesResult result = ec2.describeInstances(listingRequest.withFilters(filter1));
         	List<Reservation> reservations = result.getReservations();
         	for (Reservation reservation : reservations) {
@@ -321,7 +323,6 @@ public class EC2Manager {
     	try{
     		//int index = inputFileKey.lastIndexOf(".");					// Get rid of file suffix
     		//summaryFile = new File("outputFileFor" + inputFileKey.substring(0, index) + ".txt");
-    		summaryFile = new File("outputFileFor" + inputFileKey);
 	    	FileWriter writer = new FileWriter(summaryFile);
 	    	BufferedWriter out = new BufferedWriter(writer);
 	    	for (int i = 0; i < outputFileLines.size(); i++) {
