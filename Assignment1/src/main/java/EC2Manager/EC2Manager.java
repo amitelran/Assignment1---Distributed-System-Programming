@@ -138,8 +138,7 @@ public class EC2Manager {
         
         
         /*	************** Loop until termination message from local application **************	*/
-        
-        
+       
         
         while(true){
         	
@@ -151,12 +150,17 @@ public class EC2Manager {
         	 * - Terminate Manager instance
         	 */
         	
-        	if ((globalVars.terminateSignal) && (globalVars.numOfMessages == 0)){	
+        	if ((globalVars.terminateSignal) && (globalVars.numOfMessages == 0)){
         		terminateWorkers(globalVars.ec2);
-        		System.out.println("Deleting queue: " + globalVars.newPDFTaskQueueURL);
-        		globalVars.sqs.deleteQueue(new DeleteQueueRequest(globalVars.newPDFTaskQueueURL));
-                System.out.println("Deleting queue: " + donePDFTaskQueueURL);
-                globalVars.sqs.deleteQueue(new DeleteQueueRequest(donePDFTaskQueueURL));
+        		try{
+        			System.out.println("Deleting queue: " + globalVars.newPDFTaskQueueURL);
+            		globalVars.sqs.deleteQueue(new DeleteQueueRequest(globalVars.newPDFTaskQueueURL));
+                    System.out.println("Deleting queue: " + donePDFTaskQueueURL);
+                    globalVars.sqs.deleteQueue(new DeleteQueueRequest(donePDFTaskQueueURL));
+        		}
+        		catch (Exception e){
+        			System.err.println("Error occured while deleting queues\n");
+        		}
                 terminateManager(globalVars.ec2);
         		return;
         	}
@@ -196,20 +200,26 @@ public class EC2Manager {
             		
             		// Ensure input file corresponding key in maps are initialized
             		if ((globalVars.inputFilesMap.containsKey(inputFileKey)) && (globalVars.outputFilesMap.containsKey(inputFileKey))){
-	            		globalVars.numOfMessages--;																		// Decrement number of 'online' uncompleted tasks
-	            		System.out.println("Number of messages: " + globalVars.numOfMessages);
-	            		String line = operation + "\t" + inputFileBucket + "\t" + newFileURL;
-	            		globalVars.outputFilesMap.get(inputFileKey).add(line);											// Add completed task line to the List<String> of output file lines
-	            		globalVars.inputFilesMap.get(inputFileKey).incCompletedTasks();									// Increment no. of completed tasks for given input file identifier
-	            		messageReceiptHandle = message.getReceiptHandle();
-	            		globalVars.sqs.deleteMessage(new DeleteMessageRequest(donePDFTaskQueueURL, messageReceiptHandle));		// Delete 'donePDFTask' message from queue after handling it
+            			try{
+            				globalVars.numOfMessages--;																		// Decrement number of 'online' uncompleted tasks
+    	            		System.out.println("Number of messages: " + globalVars.numOfMessages);
+    	            		String line = operation + "\t" + inputFileBucket + "\t" + newFileURL;
+    	            		globalVars.outputFilesMap.get(inputFileKey).add(line);											// Add completed task line to the List<String> of output file lines
+    	            		globalVars.inputFilesMap.get(inputFileKey).incCompletedTasks();									// Increment no. of completed tasks for given input file identifier
+    	            		messageReceiptHandle = message.getReceiptHandle();
+    	            		globalVars.sqs.deleteMessage(new DeleteMessageRequest(donePDFTaskQueueURL, messageReceiptHandle));		// Delete 'donePDFTask' message from queue after handling it
+    	            		
+    	            		// If all input file's tasks are done, generate summary file, upload to S3, send Done Task message to Local Application queue
+    	                    if (globalVars.inputFilesMap.get(inputFileKey).isDone()){
+    	                    	sendDoneTask(globalVars.s3, globalVars.sqs, globalVars.inputFilesMap.get(inputFileKey).getFileQueueURL(), inputFileKey, outputBucketName, globalVars.outputFilesMap);
+    	                    	globalVars.inputFilesMap.remove(inputFileKey);						// Remove input file from map
+    	                    	globalVars.outputFilesMap.remove(inputFileKey);						// Remove output file from map
+    	                    }
+            			}
+            			catch (Exception e){
+            				System.err.println("Error in EC2Manager: " + e.getMessage() + "\n");
+            			}
 	            		
-	            		// If all input file's tasks are done, generate summary file, upload to S3, send Done Task message to Local Application queue
-	                    if (globalVars.inputFilesMap.get(inputFileKey).isDone()){
-	                    	sendDoneTask(globalVars.s3, globalVars.sqs, globalVars.inputFilesMap.get(inputFileKey).getFileQueueURL(), inputFileKey, outputBucketName, globalVars.outputFilesMap);
-	                    	globalVars.inputFilesMap.remove(inputFileKey);						// Remove input file from map
-	                    	globalVars.outputFilesMap.remove(inputFileKey);						// Remove output file from map
-	                    }
             		}
                     continue;
             	}
@@ -224,12 +234,17 @@ public class EC2Manager {
 	
 	
 	private static void sendDoneTask(AmazonS3 s3, AmazonSQS sqs, String doneTaskQueueURL, String inputFileKey, String outputBucketName, Map<String, List<String>> outputFilesMap) throws IOException{
-		String outputFileURL = generateSummaryFile(s3, outputFilesMap.get(inputFileKey), outputBucketName, inputFileKey);
-		SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(doneTaskQueueURL).withMessageBody("taskDone");
-        send_msg_request.addMessageAttributesEntry("outputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue(outputBucketName));
-        send_msg_request.addMessageAttributesEntry("outputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("outputFileFor" + inputFileKey));
-        send_msg_request.addMessageAttributesEntry("outputFileURL", new MessageAttributeValue().withDataType("String").withStringValue(outputFileURL));
-		sqs.sendMessage(send_msg_request);
+		try{
+			String outputFileURL = generateSummaryFile(s3, outputFilesMap.get(inputFileKey), outputBucketName, inputFileKey);
+			SendMessageRequest send_msg_request = new SendMessageRequest().withQueueUrl(doneTaskQueueURL).withMessageBody("taskDone");
+	        send_msg_request.addMessageAttributesEntry("outputFileBucket", new MessageAttributeValue().withDataType("String").withStringValue(outputBucketName));
+	        send_msg_request.addMessageAttributesEntry("outputFileKey", new MessageAttributeValue().withDataType("String").withStringValue("outputFileFor" + inputFileKey));
+	        send_msg_request.addMessageAttributesEntry("outputFileURL", new MessageAttributeValue().withDataType("String").withStringValue(outputFileURL));
+			sqs.sendMessage(send_msg_request);
+		}
+		catch (Exception e){
+			System.err.println("Error occured in sendDoneTask: " + e.getMessage() + "\n");
+		}
 	}
 	
 	
@@ -239,24 +254,29 @@ public class EC2Manager {
     
     
     private static void terminateWorkers(AmazonEC2 ec2){
-    	List<String> instanceIds = new ArrayList<String>();
-    	DescribeInstancesRequest listingRequest = new DescribeInstancesRequest();
-    	List<String> valuesT1 = new ArrayList<String>();
-    	valuesT1.add("1");
-    	Filter filter1 = new Filter("tag:Worker", valuesT1);
-    	DescribeInstancesResult result = ec2.describeInstances(listingRequest.withFilters(filter1));
-    	List<Reservation> reservations = result.getReservations();
-    	for (Reservation reservation : reservations) {
-    		List<Instance> instances = reservation.getInstances();
-    		for (Instance instance : instances) {
-    			instanceIds.add(instance.getInstanceId());
-    			System.out.println("Terminating instance:  " + instance.getInstanceId());
-    		}
+    	try{
+    		List<String> instanceIds = new ArrayList<String>();
+        	DescribeInstancesRequest listingRequest = new DescribeInstancesRequest();
+        	List<String> valuesT1 = new ArrayList<String>();
+        	valuesT1.add("1");
+        	Filter filter1 = new Filter("tag:Worker", valuesT1);
+        	DescribeInstancesResult result = ec2.describeInstances(listingRequest.withFilters(filter1));
+        	List<Reservation> reservations = result.getReservations();
+        	for (Reservation reservation : reservations) {
+        		List<Instance> instances = reservation.getInstances();
+        		for (Instance instance : instances) {
+        			instanceIds.add(instance.getInstanceId());
+        			System.out.println("Terminating instance:  " + instance.getInstanceId());
+        		}
+        	}
+        	if (!instanceIds.isEmpty()){
+        		TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
+        		ec2.terminateInstances(terminate_request);
+        	}		
     	}
-    	if (!instanceIds.isEmpty()){
-    		TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
-    		ec2.terminateInstances(terminate_request);
-    	}		
+    	catch (Exception e){
+    		System.err.println("Error in terminateWorkers: " + e.getMessage() + "\n");
+    	}
     }
     
     
@@ -265,21 +285,26 @@ public class EC2Manager {
     
     
     private static void terminateManager(AmazonEC2 ec2){
-    	List<String> instanceIds = new ArrayList<String>();
-    	DescribeInstancesRequest listingRequest = new DescribeInstancesRequest();
-    	Filter filter1 = new Filter("tag:Manager");
-    	DescribeInstancesResult result = ec2.describeInstances(listingRequest.withFilters(filter1));
-    	List<Reservation> reservations = result.getReservations();
-    	for (Reservation reservation : reservations) {
-    		List<Instance> instances = reservation.getInstances();
-    		for (Instance instance : instances) {
-    			instanceIds.add(instance.getInstanceId());
-    			System.out.println("Terminating instance:  " + instance.getInstanceId());
-    		}
+    	try{
+    		List<String> instanceIds = new ArrayList<String>();
+        	DescribeInstancesRequest listingRequest = new DescribeInstancesRequest();
+        	Filter filter1 = new Filter("tag:Manager");
+        	DescribeInstancesResult result = ec2.describeInstances(listingRequest.withFilters(filter1));
+        	List<Reservation> reservations = result.getReservations();
+        	for (Reservation reservation : reservations) {
+        		List<Instance> instances = reservation.getInstances();
+        		for (Instance instance : instances) {
+        			instanceIds.add(instance.getInstanceId());
+        			System.out.println("Terminating instance:  " + instance.getInstanceId());
+        		}
+        	}
+        	if (!instanceIds.isEmpty()){
+    			TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
+    			ec2.terminateInstances(terminate_request);		
+        	}
     	}
-    	if (!instanceIds.isEmpty()){
-			TerminateInstancesRequest terminate_request = new TerminateInstancesRequest(instanceIds);
-			ec2.terminateInstances(terminate_request);		
+    	catch (Exception e){
+    		System.err.println("Error in terminateWorkers: " + e.getMessage() + "\n");
     	}
     }
 	
@@ -294,8 +319,9 @@ public class EC2Manager {
 
     	File summaryFile = null;
     	try{
-    		int index = inputFileKey.lastIndexOf(".");					// Get rid of file suffix
-    		summaryFile = new File("outputFileFor" + inputFileKey.substring(0, index) + ".txt");
+    		//int index = inputFileKey.lastIndexOf(".");					// Get rid of file suffix
+    		//summaryFile = new File("outputFileFor" + inputFileKey.substring(0, index) + ".txt");
+    		summaryFile = new File("outputFileFor" + inputFileKey);
 	    	FileWriter writer = new FileWriter(summaryFile);
 	    	BufferedWriter out = new BufferedWriter(writer);
 	    	for (int i = 0; i < outputFileLines.size(); i++) {
@@ -310,15 +336,22 @@ public class EC2Manager {
     	
     	/* *** Upload summary file to the Manager's S3 output bucket *** */
     	
-    	System.out.println("Uploading summary file to S3 storage...\n");
-    	String key = summaryFile.getName();
-    	System.out.println("Output File Name: " + key);
-        PutObjectRequest req = new PutObjectRequest(bucket, key, summaryFile);
-        s3.putObject(req);
-        s3.setObjectAcl(bucket, key, CannedAccessControlList.PublicRead);
-        URL outputFileURL = s3.getUrl(bucket, key);
-        System.out.println("Output File URL: " + outputFileURL.toString());
-        return outputFileURL.toString();
+    	try{
+    		System.out.println("Uploading summary file to S3 storage...\n");
+        	String key = summaryFile.getName();
+        	System.out.println("Output File Name: " + key);
+            PutObjectRequest req = new PutObjectRequest(bucket, key, summaryFile);
+            s3.putObject(req);
+            s3.setObjectAcl(bucket, key, CannedAccessControlList.PublicRead);
+            URL outputFileURL = s3.getUrl(bucket, key);
+            System.out.println("Output File URL: " + outputFileURL.toString());
+            return outputFileURL.toString();
+    	}
+    	catch (Exception e){
+    		System.err.println("Error occured in generating summary file: " + e.getMessage() + "\n");
+    		return "<Error occured while generating outputFileURL>";
+    	}
+    	
     }
     
    
